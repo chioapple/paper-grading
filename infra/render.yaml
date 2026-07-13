@@ -1,0 +1,47 @@
+# Render Blueprint 规划文件。
+# 阶段 1 只固定资源边界，不代表已创建或可上线：
+# - 所有自动部署均关闭；必须先补齐 sync:false 配置并完成阶段验收。
+# - 免费 Web Service 不支持 pre-deploy command；数据库迁移必须在手动部署前显式执行。
+# - Worker 与 Redis 要到阶段 10 才有真实入口，本文件暂不声明，避免提前创建无效资源。
+# - Background Worker 没有免费实例，阶段 10 启用前还需要确认付费实例。
+
+previews:
+  generation: 'off'
+
+services:
+  - type: web
+    runtime: static
+    name: paper-grading-frontend
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: 'off'
+    buildFilter:
+      paths:
+        - frontend/**
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  - type: web
+    runtime: python
+    name: paper-grading-api
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: pip install .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/live
+    autoDeployTrigger: 'off'
+    buildFilter:
+      paths:
+        - backend/**
+        - infra/render.yaml
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: READINESS_DATABASE_TIMEOUT_SECONDS
+        value: 2.0
