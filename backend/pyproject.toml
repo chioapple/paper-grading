@@ -30,8 +30,11 @@ dev = [
 include = ["app*"]
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-config --strict-markers"
+addopts = "-ra --strict-config --strict-markers -m 'not postgres'"
 testpaths = ["tests"]
+markers = [
+    "postgres: requires an explicit independent PostgreSQL test database",
+]
 
 [tool.ruff]
 line-length = 100

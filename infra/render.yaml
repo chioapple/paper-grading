@@ -42,6 +42,11 @@ services:
       - key: APP_ENV
         value: production
       - key: DATABASE_URL
+        # Render 使用带 ?ssl=require 的 Supavisor session pooler 5432，不使用仅 IPv6 的免费直连地址。
         sync: false
+      - key: DATABASE_POOL_SIZE
+        value: 5
+      - key: DATABASE_POOL_TIMEOUT_SECONDS
+        value: 5.0
       - key: READINESS_DATABASE_TIMEOUT_SECONDS
         value: 2.0

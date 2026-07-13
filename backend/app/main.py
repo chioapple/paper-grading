@@ -4,10 +4,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.health import router as health_router
 from app.config import Settings
+from app.db import Database
 from app.readiness import DatabaseReadinessProbe
 
 
@@ -17,16 +17,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         runtime_settings = settings or Settings()
-        engine = create_async_engine(runtime_settings.database_url, pool_pre_ping=True)
+        database = Database.from_settings(runtime_settings)
         application.state.settings = runtime_settings
+        application.state.database = database
         application.state.readiness_probe = DatabaseReadinessProbe(
-            engine=engine,
+            engine=database.engine,
             timeout_seconds=runtime_settings.readiness_database_timeout_seconds,
         )
         try:
             yield
         finally:
-            await engine.dispose()
+            await database.dispose()
 
     application = FastAPI(
         title="Paper Grading API",

@@ -24,7 +24,7 @@ Paper Grading/
 │   │   ├── workers/          # Celery 批量任务
 │   │   └── export/           # Excel 导出
 │   └── tests/
-├── supabase/migrations/      # 数据表、约束和 RLS
+├── backend/migrations/       # Alembic 数据表、约束和 RLS 迁移
 ├── infra/                    # Render 与 R2 配置
 ├── e2e/                      # 浏览器全流程测试
 ├── docs/
@@ -82,23 +82,31 @@ Paper Grading/
 
 **Files**
 
-- `supabase/migrations/*.sql`
+- `backend/migrations/versions/*.py`
 - `backend/app/domain/`
 - `backend/app/db.py`
 
 **Action**
 
 - 建立 `profiles`、`provider_configs`、`assignments`、`rubric_versions`、`submissions`、`grading_jobs`、`grading_job_items`、`grading_attempts`、`teacher_reviews`、`audit_logs` 和 `exports`。
+- `profiles.id` 直接引用 Supabase `auth.users.id`，不允许孤立账户资料。
 - 统一使用 UUID 主键，教师数据包含 `owner_id`。
 - 为角色、状态、分数范围和唯一性增加约束。
 - 为所有外键、`owner_id` 和常用筛选字段建立索引。
 - API/Worker 使用连接池；迁移任务使用直连。
+- Alembic 是唯一迁移事实源，不再维护第二套 Supabase SQL 迁移。
+- 审计日志、已完成模型评分和已确认教师复核由数据库阻止改写或删除。
+- 阶段 2 立即为全部 `public` 业务表启用 RLS 且不建策略，使普通 API 角色默认拒绝；阶段 4 再增加隔离策略。
+- 真实破坏性验收只允许使用独立 `TEST_MIGRATION_DATABASE_URL`，同时校验 project ref、固定确认值并拒绝复用部署迁移库。
 
 **Verify**
 
 - 全新数据库可以一次完成迁移。
 - 迁移重复执行不会破坏数据。
 - 非法角色、越界分数、孤立外键和重复版本写入失败。
+- 已完成评分、已确认复核和审计日志的修改或删除失败。
+- PostgreSQL 系统目录中的表、约束、索引、触发器和 RLS 状态符合模型。
+- `pg_policies` 为空，切换到 `authenticated` 角色后不能读取或写入业务表。
 
 **Done**
 
@@ -138,16 +146,16 @@ Paper Grading/
 
 **Files**
 
-- `supabase/migrations/*_rls.sql`
+- `backend/migrations/versions/*_rls.py`
 - `backend/app/auth/dependencies.py`
 - `backend/tests/security/`
 
 **Action**
 
-- 所有业务表启用并强制 RLS。
+- 为已启用 RLS 的业务表增加策略并强制执行。
 - 教师策略同时检查 `owner_id = (select auth.uid())` 和账户状态。
 - 前端仅使用 Supabase Auth 获取会话，所有业务请求进入 FastAPI。
-- 教师业务请求继续携带用户 JWT 访问 Supabase，使 RLS 生效。
+- 每个教师数据库事务显式设置受限角色和 JWT claims，事务结束后清除，禁止连接池泄漏身份。
 - 管理员操作和后台 Worker 才使用服务端权限。
 
 **Verify**

@@ -4,7 +4,7 @@
 
 Paper Grading 是一个面向教师的云端英文作文批改网站。管理员创建教师账户并统一配置模型 API；教师创建作业、确认评分标准、批量上传论文、复核 AI 评分建议并导出 Excel。
 
-阶段 1“项目与环境初始化”已完成。前后端可本地启动，详细步骤见 `docs/DEVELOPMENT_PLAN.md`。
+阶段 1“项目与环境初始化”已完成。阶段 2 的数据模型和迁移已落地，正在等待独立真实 PostgreSQL 测试库验收。
 
 ## 计划功能
 
@@ -44,11 +44,13 @@ python3 -m venv .venv
 npm --prefix frontend ci
 ```
 
-启动后端前必须显式提供环境和 PostgreSQL 地址：
+启动后端前必须显式提供环境和应用 PostgreSQL 地址。生产环境的 `DATABASE_URL` 使用 Supavisor session pooler 5432 并加 `?ssl=require`；迁移地址与应用地址分开：
 
 ```bash
 export APP_ENV=development
 export DATABASE_URL=postgresql+asyncpg://localhost:5432/paper_grading
+export DATABASE_POOL_SIZE=5
+export DATABASE_POOL_TIMEOUT_SECONDS=5.0
 ./.venv/bin/uvicorn app.main:app --app-dir backend --reload
 ```
 
@@ -67,8 +69,10 @@ npm --prefix frontend run dev -- --host 127.0.0.1
 Render 免费 Web Service 不支持 pre-deploy command。每次手动部署 API 前，必须先在受控环境显式执行迁移；迁移失败就停止部署：
 
 ```bash
-APP_ENV=production DATABASE_URL='postgresql+asyncpg://...' .venv/bin/alembic -c backend/alembic.ini upgrade head
+MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
+
+`MIGRATION_DATABASE_URL` 必须是启用 SSL 的 Supabase direct 直连地址，只在支持 IPv6 的受控迁移环境临时提供，不得注入 Render API，也不得回退使用 `DATABASE_URL`。
 
 最终部署顺序仍为：数据库迁移 → API → Redis → Worker → 前端 → 冒烟测试。
 
@@ -94,16 +98,29 @@ cd backend
 ../.venv/bin/pytest
 ```
 
-PostgreSQL 迁移空跑：
+PostgreSQL 迁移离线编译：
 
 ```bash
-APP_ENV=development DATABASE_URL=postgresql+asyncpg://localhost:5432/paper_grading .venv/bin/alembic -c backend/alembic.ini upgrade head --sql
+MIGRATION_DATABASE_URL=postgresql+asyncpg://localhost:5432/paper_grading .venv/bin/alembic -c backend/alembic.ini upgrade head --sql
 ```
+
+真实 PostgreSQL 迁移和约束验收：
+
+```bash
+TEST_MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' \
+TEST_SUPABASE_PROJECT_REF='...' \
+TEST_DATABASE_RESET_CONFIRMATION='I_UNDERSTAND_THIS_DELETES_STAGE_2_DATA' \
+TEST_TEACHER_AUTH_USER_ID='...' \
+TEST_OTHER_AUTH_USER_ID='...' \
+.venv/bin/pytest -m postgres backend/tests/test_postgres_contract.py
+```
+
+测试地址、project ref 和两个测试用户必须来自同一个独立 Supabase 测试项目，两个用户尚未创建 `profile`。验收会执行升级、回退、再次升级并验证非法写入；代码会拒绝与当前 `MIGRATION_DATABASE_URL` 相同的项目。普通 `pytest` 不运行这组破坏性测试，显式执行 `-m postgres` 时缺少任一配置都会失败。
 
 仓库与前端生产构建密钥扫描：
 
 ```bash
-.venv/bin/detect-secrets scan --all-files --no-verify --exclude-files '(^|/)(\.venv|node_modules|\.git|\.playwright-cli|backend/\.(mypy|pytest|ruff)_cache)/' .
+.venv/bin/detect-secrets scan --all-files --no-verify --exclude-files '(^|/)(\.venv|node_modules|\.git|\.playwright-cli|\.(mypy|pytest|ruff)_cache)/' .
 ```
 
 ## 搜索记录
@@ -112,6 +129,7 @@ APP_ENV=development DATABASE_URL=postgresql+asyncpg://localhost:5432/paper_gradi
 
 - [skills.sh](https://skills.sh/)：未发现可以直接替代本项目完整开发流程的单一技能；继续采用当前分阶段方案，避免引入来源不明的完整脚手架。
 - [Supabase 开源仓库](https://github.com/supabase/supabase)：确认 PostgreSQL、Auth、Storage 和 RLS 组合适合账户与数据隔离，但业务批改仍保留在 FastAPI。
+- [Supabase 数据库连接文档](https://supabase.com/docs/guides/database/connecting-to-postgres)：Render 运行时使用 IPv4 的 session pooler 5432；迁移使用 direct 地址，二者不共用配置。
 - [OpenAI Python SDK](https://github.com/openai/openai-python)：确认异步客户端和流式接口可作为官方 OpenAI 适配器基础，不将其当作所有供应商完全兼容的证明。
 - [Open WebUI provider 文档](https://github.com/open-webui/docs/blob/main/docs/getting-started/quick-start/connect-a-provider/starting-with-openai-compatible.mdx)：参考其“协议兼容与供应商能力分离”思路；不采用其完整应用架构。
 - GitHub 未找到同时满足“教师人工复核、严格 Rubric、批量论文、RLS、多供应商适配”的可直接复用完整项目，因此不复制现有仓库。
@@ -124,9 +142,13 @@ APP_ENV=development DATABASE_URL=postgresql+asyncpg://localhost:5432/paper_gradi
 - [x] 初始化前后端工程、环境配置和质量检查。
 - [x] 实现并验证基础 App Shell 与健康检查。
 
+## 进行中
+
+- [-] 阶段 2 数据模型、复合外键、约束、索引、默认拒绝的 RLS、连接池和 Alembic 迁移已落地；待真实 PostgreSQL 验收。
+
 ## 待办
 
-- [ ] 建立数据库、认证和 RLS。
+- [ ] 完成真实数据库验收、认证和 RLS 策略。
 - [ ] 实现管理员账户与模型配置。
 - [ ] 实现作业、Rubric、上传和文档解析。
 - [ ] 实现模型适配器与批量评分。
