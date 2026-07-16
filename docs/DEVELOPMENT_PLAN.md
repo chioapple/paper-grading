@@ -20,12 +20,12 @@ Paper Grading/
 │   │   ├── domain/           # Rubric、评分、任务数据结构
 │   │   ├── providers/        # 模型 API 适配器
 │   │   ├── parsing/          # DOCX/PDF 解析
-│   │   ├── storage/          # R2 文件操作
+│   │   ├── storage/          # Supabase Storage 文件操作
 │   │   ├── workers/          # Celery 批量任务
 │   │   └── export/           # Excel 导出
 │   └── tests/
 ├── backend/migrations/       # Alembic 数据表、约束和 RLS 迁移
-├── infra/                    # Render 与 R2 配置
+├── infra/                    # Render 与 Supabase Storage 配置
 ├── e2e/                      # 浏览器全流程测试
 ├── docs/
 ├── CONTEXT.md
@@ -227,7 +227,7 @@ Paper Grading/
 
 - 教师可以完成“创建作业 → 确认评分标准”。
 
-### 阶段 7：DOCX/PDF 上传、R2 与解析
+### 阶段 7：DOCX/PDF 上传、Supabase Storage 与解析
 
 **Files**
 
@@ -236,7 +236,7 @@ Paper Grading/
 - `backend/app/parsing/docx.py`
 - `backend/app/parsing/pdf.py`
 - `backend/app/parsing/normalize.py`
-- `backend/app/storage/r2.py`
+- `backend/app/storage/supabase.py`
 
 **Action**
 
@@ -245,7 +245,8 @@ Paper Grading/
 - 验证真实 MIME、压缩结构、页数和文本规模。
 - 使用 SHA-256 检测同一作业中的重复文件。
 - DOCX 按段落和表格、PDF 按页和文本块生成 `block_id` 与定位信息。
-- 原始文件、提取文本和模型原始响应存入私有 R2；数据库只保存元数据和对象路径。
+- 原始文件、提取文本和模型原始响应存入私有 Supabase Storage；数据库只保存元数据和对象路径。
+- 后端复用已有 Supabase Secret Key 调用 Storage API；浏览器不得获得 Secret Key 或对象路径。
 
 **Verify**
 
@@ -405,16 +406,16 @@ Paper Grading/
 
 - `backend/app/monitoring/quotas.py`
 - `backend/app/maintenance/retention.py`
-- `infra/r2/lifecycle.json`
+- `backend/app/maintenance/backup.py`
 - `docs/runbooks/backup-and-restore.md`
 
 **Action**
 
 - 数据库 70% 提醒、85% 禁止创建新批次。
-- R2 达到 8GB 提醒、9GB 禁止继续上传。
+- Supabase Storage 达到可配置配额的 70% 提醒、85% 禁止继续上传；不得写死供应商套餐容量。
 - 原始论文、提取文本和模型原始响应默认保留 30 天。
 - 分数、反馈和审计元数据长期保留。
-- 每日生成加密数据库逻辑备份到 R2，默认保留 7 天。
+- 每日生成加密数据库逻辑备份到独立于主 Supabase 项目的目标，默认保留 7 天；目标在阶段 13 开始前确认。
 - 阈值与保留时间全部可配置。
 
 **Verify**
@@ -443,7 +444,7 @@ Paper Grading/
 **Action**
 
 - 单元测试覆盖 Rubric、总分、证据验证和错误分类。
-- 集成测试覆盖 Supabase、R2、JWT、队列和 Excel。
+- 集成测试覆盖 Supabase PostgreSQL、Auth、Storage、JWT、队列和 Excel。
 - 权限测试覆盖两个教师交叉访问、账户停用和管理员边界。
 - 模型契约测试覆盖所有启用供应商。
 - 浏览器测试覆盖邀请、登录、创建作业、上传、批改、复核和导出。

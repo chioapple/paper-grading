@@ -10,7 +10,10 @@ type IconName =
   | "inbox"
   | "chevronLeft"
   | "chevronDown"
-  | "plus";
+  | "plus"
+  | "accounts"
+  | "settings"
+  | "close";
 
 type IconProps = SVGProps<SVGSVGElement> & {
   name: IconName;
@@ -62,6 +65,19 @@ const paths: Record<IconName, React.ReactNode> = {
   chevronLeft: <path d="m14 7-5 5 5 5" />,
   chevronDown: <path d="m7 10 5 5 5-5" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  accounts: (
+    <>
+      <circle cx="12" cy="7" r="3.5" />
+      <path d="M5 21c.6-4.3 2.9-6.5 7-6.5s6.4 2.2 7 6.5" />
+    </>
+  ),
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+    </>
+  ),
+  close: <path d="m6 6 12 12M18 6 6 18" />,
 };
 
 export function Icon({ name, ...props }: IconProps) {

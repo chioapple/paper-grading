@@ -10,7 +10,7 @@
 - AI 结果必须经教师确认后才能成为最终成绩。
 - 管理员统一配置模型 API Key。
 - 支持 DeepSeek、Kimi、智谱 GLM、OpenAI、Anthropic、Gemini 和经过测试的 OpenAI-compatible API。
-- 数据库优先采用 Supabase PostgreSQL，论文文件采用 Cloudflare R2。
+- 数据库采用 Supabase PostgreSQL，论文文件、提取文本和模型原始响应采用同项目的私有 Supabase Storage。
 - 同一批次不自动切换模型。
 - 后端只接受 `postgresql+asyncpg`，不使用 SQLite 代替 PostgreSQL。
 - `/health/live` 只证明进程存活；`/health/ready` 必须实际检查数据库。
@@ -24,11 +24,55 @@
 - 审计日志禁止更新和删除；模型评分只允许从 `running` 完成一次；教师复核确认后禁止修改或删除。
 - 模型评分上限由数据库对照批次 Rubric 校验，教师复核上限必须等于对应模型评分上限。
 - JSONB 容器类型由数据库约束，不能依赖 Python 类型提示。
+- SQLAlchemy PostgreSQL JSONB 默认会把 Python `None` 序列化为 JSON `null`；凡数据库约束用 `is null` 表达“尚无结果”的可空 JSONB，都必须显式使用 `JSONB(none_as_null=True)`。
 - 阶段 2 先为全部 `public` 业务表启用 RLS 且不建策略，使普通 API 角色默认拒绝；阶段 4 再增加策略并强制执行。
 - 生产应用只接受启用 SSL 的 Supavisor session pooler 5432；远程迁移只接受启用 SSL 的 Supabase direct 地址。
 - 真实数据库验收只读取独立 `TEST_MIGRATION_DATABASE_URL`，并校验 project ref、固定确认值及部署库差异；会回退并重建阶段 2 表。
+- 已发布迁移不能原地改写；阶段 2 最终修订固定为前向迁移 `20260714_0003`，真实验收只回放到该修订，阶段 3 从 `20260714_0004` 继续。
+- 两个 Auth 测试用户 UUID 必须在破坏性操作前完成格式、互异、真实存在和无 profile 校验。
+- `grading_attempts` 必须先以 `running` 插入，数据库拒绝直接插入任何终态。
+- Supabase MCP 只用于项目预检、只读目录和验后 advisors；不能替代 asyncpg/Alembic 所需的 direct 数据库连接。
 - HTTP 携带的 JWT 不会自动进入 SQLAlchemy 连接；阶段 4 必须在每个事务显式设置受限角色和 JWT claims。
 - 首版账户只停用、不硬删除，因此 `profiles → auth.users` 使用 `ON DELETE RESTRICT`。
+- 阶段 5 当前只使用 DeepSeek，不创建 OpenAI Key；其他供应商保留配置和连接测试能力，正式评分适配器留到阶段 9。
+- 供应商 Key 使用 AES-256-GCM、随机 12 字节 nonce 和供应商 UUID 关联数据加密；主密钥只存在于后端环境。
+- 供应商连接测试必须绑定配置版本；Base URL、Key、允许模型、默认模型或超时发生变化时，旧测试自动失效并回到草稿。
+- 自定义 OpenAI-compatible 地址必须使用 HTTPS、解析结果全部为公网地址，真实 TCP 连接固定到已校验 IP，且禁止重定向。
+- 真实模型 API Key 出现在聊天中即视为泄露，不得使用或保存，必须撤销并通过产品管理页输入替代 Key。
+- 阶段 5 第一次真实迁移暴露 Alembic 命名约定陷阱：完整数据库约束名若不经 `op.f(...)` 标记，会再次拼接表名和 `_check`；迁移测试必须核对生成的最终 SQL，而不能只检查 SQL 能否离线编译。
+- 阶段 5 本地应用不能复用迁移直连地址；FastAPI 持久连接池必须使用 Supavisor session pooler 5432，否则真实启动可能出现 `unexpected connection_lost() call` 并使就绪探针返回 503。
+- VPN 的浏览器代理不保证 PostgreSQL TCP 流量使用同一出口；真实验收要固定节点。Supabase Network Restrictions 未启用时无需改设置，已启用时只允许当前稳定出口 IP `/32`，节点变化后由用户手动更新。
+- 关闭 VPN 后 Supavisor session pooler 5432 仍可稳定工作；真实健康检查证明应用连接和数据库就绪均正常，因此运行网站不依赖梯子。
+- 模型连接测试不只检查 Key 和 HTTP 200；显式支持模型列表时，默认模型必须真实出现在返回目录中。未声明支持时只能用合成内容执行一次计费冒烟，不能假设存在 Models API。
+- FastAPI 默认 422 会包含 Pydantic 错误的原始 `input`，可能回显 API Key；所有请求校验错误必须使用统一安全结构，只返回稳定错误码、通用文案、错误类型和字段位置。
+- 数据库允许历史草稿的默认模型为空；更新时必须先把可空存储状态收窄成完整业务配置，再构造严格请求模型，避免把业务拒绝变成非预期 500。
+- 历史草稿也可能没有 Key；提交新 Key 时必须允许补齐，普通字段更新则直接保留密文而不解密。合并更新后还要显式验证默认模型仍属于允许模型。
+- 阶段 6 不存在全局默认供应商；教师选择管理员已启用的供应商，系统只使用该配置的 `default_model`，不得按返回顺序猜选。
+- Rubric 分值在 JSON 中使用十进制字符串，避免浏览器浮点数破坏步长与总分相等；Python 和 PostgreSQL 都按精确 decimal/numeric 校验。
+- 同一作业最多一个当前草稿和一个当前确认版本；批改任务只能固定引用已确认版本。修订草稿不覆盖也不作废旧确认版本；切换确认版本时，在同一事务内依次把作业转回草稿、旧版转为 `superseded`、新版转为 `confirmed`，最后把作业恢复为 `ready`。
+- 阶段 6 的“上传题目与评分标准”只允许浏览器本地导入 UTF-8 `.txt/.md`；DOCX/PDF、Supabase Storage 和论文上传仍属于阶段 7。
+- 数据库校验 Rubric 的字段集合、数值关系和状态不变量；API 领域模型额外限制数组数量和文本长度。确认操作还要在同一事务内核验供应商启用状态、连接测试版本和管理员默认模型，不能只依赖历史快照外键。
+- 结构化调用使用 JSON object、零温度和严格响应模型；DeepSeek 显式关闭思考模式。格式或业务契约不合法时直接失败，不自动重试、修补或切换模型。
+- 已确认 Rubric 必须显示保存时的供应商和模型快照；供应商之后被停用也不能把历史来源显示为空。`superseded` 必须与 `confirmed` 使用不同状态文案。
+- 浏览器不能用 IEEE 754 浮点取模判断评分步长；阶段 6 输入精度最多四位小数，应先统一缩放为整数再判断整除。
+- “当前不存在错误数据”的计数不能证明写入门禁有效；真实阶段 6 验收必须尝试用已替代 Rubric 创建批改任务，并准确捕获目标 `23514` 拒绝。
+- 阶段 7 的“批次”是浏览器一次文件选择，最多 100 篇；后端 API 保持单文件流式处理，前端最多并发 3 个，避免一个 multipart 请求暂存最多 2GB 内容。重复发起新的选择属于新批次，不把前端数量限制伪装成全局安全配额。
+- DOCX 没有稳定的版面页数，阶段 7 只对 PDF 强制 200 页上限；DOCX 使用压缩结构、解压总量、压缩比、字符数和文本块数限制资源。
+- PDF 证据定位保存真实文本行坐标，不能用整页边界冒充文本块位置。
+- `python-docx` 会跳过正文内容控件；阶段 7 明确拒绝内容控件、文本框、未接受修订、页眉页脚正文和嵌套表格，禁止在未告知教师的情况下丢失文字。
+- 解析失败的原文件保留在私有 Supabase Storage，并由 `failed` 论文记录和错误码持续引用，便于审计和重新上传；只有尚未被数据库引用的规范文本对象立即补偿删除。统一 30 天保留和自动删除属于阶段 13。
+- Supabase Storage 桶必须保持私有；后端复用已有 Secret Key 调用 Storage API，不为浏览器角色创建 Storage Policy。应用只签发 30–300 秒的读取地址，当前默认 60 秒。签名 URL 是临时 bearer token，不能记录或发送到聊天。
+- 模型原始响应的 `raw_response_object_key` 已在数据模型预留，Supabase Storage 适配器提供通用 JSON 写入；实际响应到阶段 8–10 产生，不提前伪造阶段 7 写入流程。
+- 阶段 8 的模型输出不包含总分、维度上限或扣分值；后端只使用已确认 Rubric 计算 `max(0, 维度小计 - 固定扣分)`，同时保存小计与扣分合计，最低归零是明确合同而非异常兜底。
+- 评分审计分为 Prompt 模板哈希、结果 Schema 哈希、Rubric 哈希、基础请求哈希和实际调用哈希；`grading_attempts.request_hash` 在阶段 10 写实际调用哈希，纠正调用因此不会与首次调用混淆。
+- 首次结构失败可以使用相同提示快照纠正一次；第二次失败不生成假分数，attempt 记为 `failed`，item/job 进入 `needs_review`。真正的同供应商、同模型和同参数锁定由不可变 job 快照与阶段 9/10 调用层完成。
+- 原始模型响应的只创建写入、对象路径唯一性和内容 SHA-256 留到阶段 9/10 与真实适配器、任务持久化一起实现；阶段 8 不提前调用 Storage。
+- 阶段 9 的统一调用快照固定供应商配置 UUID/版本、模型、能力、价格、输出参数、Schema 和阶段 8 基础请求哈希；唯一纠正只允许改变消息集合与调用哈希。
+- 不同供应商不能统一使用 `temperature=0`：DeepSeek 关闭思考后用 0，Kimi 按模型能力省略或固定 0.6，GLM 用 `do_sample=false`，OpenAI/Anthropic/Gemini 默认省略采样覆盖。
+- 模型上下文、输出上限和价格必须来自精确模型的版本化能力快照；模型列表只能证明可发现，不能自动证明评分能力。未知能力直接失败。
+- 价格不写死在适配器；费用使用币种、版本和输入长度分档快照估算。缺价格快照返回不可估算，不能记为 0 元。
+- 适配器只返回原始响应 bytes、SHA-256、统一用量和稳定错误；不写 Supabase Storage、不校验评分业务、不改变任务状态。阶段 10 负责编排只创建持久化。
+- 单批理论上最多产生 2GB 原文件，阶段 13 的配额门禁必须读取可配置容量并按比例提醒和阻断，不能写死供应商套餐容量。
 
 ## 第一性原理结论
 
@@ -46,11 +90,34 @@
 - Supabase 默认 SMTP 不适合正式邀请教师，需要自有 SMTP。
 - 不同模型评分稳定性必须使用真实 Rubric 和教师样本校准。
 - 自动删除涉及真实论文文件，启用前需要再次取得用户确认。
-- 当前环境没有 PostgreSQL、Docker、Supabase CLI 或数据库连接，离线升级和回退通过不能替代真实 Supabase 验收。
+- 阶段 3 的 Auth profile 触发器只处理 `invited_at` 非空的管理员邀请；普通注册不会获得 profile，但真实环境仍必须关闭公开注册，避免产生不受控 Auth 用户。
+- 阶段 3 本地全库质量门禁已清零；真实 Supabase 配置、迁移、邮件和旧会话行为仍需单独验收。
+- Supabase Auth 邀请不是单次插入：实际先创建用户，再把 `invited_at` 从空更新为邀请时间；只监听 `AFTER INSERT` 会漏掉真实邀请。
+- 邀请邮件链接会先在 Supabase 消耗一次性令牌，再重定向到本地回调；点击前必须先启动前端，否则即使页面连接失败，旧链接也可能已经失效。
+- 唯一管理员引导必须同时要求 `last_sign_in_at` 为空；已经消费邀请并登录过的账户不能再以“尚未激活”身份提升。
+- 真实项目已确认唯一管理员邮件回调、设密和登录成功；公开注册设置返回 `disable_signup=true`。
+- Supabase 默认 SMTP 的真实教师邀请返回 `429 over_email_send_rate_limit`；失败事务没有留下 Auth 用户或 profile，管理员权限和邀请触发器均正常。
+- 教师账户页面目前吞掉具体后端错误并显示统一文案，邮件限流会被误报成“邮箱可能已被邀请”。
+- Supabase 默认 SMTP 仅用于开发且限制收件地址和发送频率；完整邮件验收需要自定义 SMTP，或在限流恢复后使用项目团队成员邮箱。
+- Supabase Auth 的泄露密码保护当前未启用；该能力属于 Auth 配置，不影响阶段 2 数据库验收，后续按账户安全和套餐能力处理。
+- 阶段 4 不把教师业务事务直接降为 Supabase `authenticated`；专用 `paper_grading_teacher_api` 只由 FastAPI 临时切换，浏览器持教师 JWT 仍无业务表权限。
+- 教师最小权限固定为：profile 只读自己；provider 无权限；assignment/rubric/review 可按职责更新；submission/job/item/export 只读和创建；attempt/audit 只读；全部不开放删除。
+- RLS 账户状态检查放在未暴露的私有 `SECURITY DEFINER` 函数中，函数固定空 `search_path` 且只授予教师受限角色执行权。
+- 当前账户 profile 必须用短会话读取并先关闭；否则认证会话与教师事务同时占连接，小连接池在并发下会耗尽。
+- 教师受限角色不应获得 `auth` schema 使用权；验收身份应通过已授权的私有 `SECURITY DEFINER` 函数确认，不能为了测试放宽生产权限。
+- 真实验收自身也必须在异常路径关闭教师依赖会话；否则 `pool_size=1` 时清理连接无法取得，临时测试数据会遗留。
 
 ## 当前阻塞
 
 - 阶段 1 没有未解决阻塞。
-- 阶段 2 本地实现已落地，但真实 PostgreSQL/Supabase 验收被独立测试库地址、project ref、破坏性操作确认及两个 Auth 测试用户阻塞。
-- 尚未提供正式产品域名、Supabase、R2、Render、SMTP 和模型供应商账户。
+- 阶段 2 没有未解决阻塞。
+- 阶段 3 没有未解决阻塞。
+- 阶段 4 没有未解决阻塞。迁移、真实 PostgreSQL 隔离、11 表 Data API 拒绝、停用旧 Token、邀请 profile 回归和 Advisors 均已通过。
+- 阶段 5 没有未解决阻塞。关闭梯子并重启后端后，Supavisor session pooler 5432 的最终就绪检查已返回 200。
+- 阶段 6 没有未解决阻塞；真实 Supabase 写入、DeepSeek 生成、版本切换、只读 SQL 和负向门禁均已通过。
+- 阶段 7 没有未解决阻塞；本地门禁、真实 Supabase Storage、`20260716_0009` 前向迁移、目录权限、上传、失败重试、并发去重和跨教师下载验收均已通过。
+- 阶段 8 没有未解决阻塞；真实 Supabase `20260716_0010` 迁移回放、新列、约束、函数权限和零行核验均已由用户确认通过。
+- 阶段 9 没有未解决阻塞；七类适配器、本地门禁、DeepSeek `deepseek-v4-pro` 真实评分冒烟和 `STAGE9_ACCEPTANCE.md` 全部验收均已通过。
+- Security Advisor 唯一警告是 Auth 的泄露密码保护未启用；它不是阶段 4 的 RLS 或数据库权限问题，不阻塞阶段 4 收口。
+- 尚未提供正式产品域名、生产 Supabase、Render、SMTP 和模型供应商账户。
 - 尚未提供用于质量校准的真实题目、Rubric 和教师评分样本。

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import { useAuth } from "../features/auth/AuthContext";
 import { copy, type Language } from "./copy";
 import { Icon } from "./icons";
 
@@ -9,6 +10,8 @@ export type AppOutletContext = {
 };
 
 export function AppShell() {
+  const { account, signOut } = useAuth();
+  const navigate = useNavigate();
   const [language, setLanguage] = useState<Language>("zh");
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
@@ -22,7 +25,18 @@ export function AppShell() {
     { to: "/assignments", label: text.assignments, icon: "document" as const },
     { to: "/grading-jobs", label: text.gradingJobs, icon: "clipboard" as const },
     { to: "/exports", label: text.exports, icon: "download" as const },
+    ...(account?.role === "admin"
+      ? [
+          { to: "/admin/users", label: text.teacherAccounts, icon: "accounts" as const },
+          { to: "/admin/providers", label: text.modelProviders, icon: "settings" as const },
+        ]
+      : []),
   ];
+
+  async function handleSignOut() {
+    await signOut();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <div className={`app-shell${isCollapsed ? " app-shell--collapsed" : ""}`}>
@@ -85,14 +99,19 @@ export function AppShell() {
               <span className="account-button__icon">
                 <Icon name="user" />
               </span>
-              <span>{text.teacher}</span>
+              <span>{account?.display_name ?? text.teacher}</span>
               <Icon className="account-button__chevron" name="chevronDown" />
             </button>
             {isAccountOpen ? (
               <section className="account-popover" id="account-popover" aria-live="polite">
                 <h2>{text.accountTitle}</h2>
-                <strong>{text.accountRole}</strong>
-                <p>{text.accountBody}</p>
+                <strong>
+                  {account?.role === "admin" ? text.adminRole : text.teacherRole}
+                </strong>
+                <p>{account?.email}</p>
+                <button className="account-popover__logout" onClick={handleSignOut} type="button">
+                  {text.signOut}
+                </button>
               </section>
             ) : null}
           </div>

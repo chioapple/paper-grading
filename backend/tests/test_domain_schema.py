@@ -1,6 +1,10 @@
 """阶段 2 数据库结构契约测试。"""
 
+from typing import cast
+
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, Uuid
+from sqlalchemy.dialects.postgresql.asyncpg import PGDialect_asyncpg
+from sqlalchemy.engine.interfaces import Dialect
 
 from app.domain.models import Base
 
@@ -78,7 +82,11 @@ def test_account_and_provider_schema_enforces_administration_rules() -> None:
         "provider_configs_status_check",
         "provider_configs_limits_check",
         "provider_configs_enabled_check",
+        "provider_configs_test_version_check",
+        "provider_configs_default_model_check",
     } <= constraint_names("provider_configs", CheckConstraint)
+    assert providers.c.config_version.nullable is False
+    assert providers.c.tested_config_version.nullable is True
 
 
 def test_assignment_content_schema_prevents_cross_teacher_links() -> None:
@@ -90,18 +98,36 @@ def test_assignment_content_schema_prevents_cross_teacher_links() -> None:
         assert f"{table_name}_owner_status_created_idx" in index_names(table_name)
 
     assert {
+        "assignments_instructions_check",
+        "assignments_status_check",
+        "assignments_title_check",
+    } <= constraint_names("assignments", CheckConstraint)
+    assert {
         (("assignment_id", "owner_id"), ("assignments.id", "assignments.owner_id"))
     } <= foreign_key_shapes("rubric_versions")
+    assert {(("provider_config_id",), ("provider_configs.id",))} <= foreign_key_shapes(
+        "rubric_versions"
+    )
     assert {
         "rubric_versions_status_check",
         "rubric_versions_score_range_check",
         "rubric_versions_confirmation_check",
         "rubric_versions_structured_rubric_check",
         "rubric_versions_version_check",
+        "rubric_versions_generation_check",
+        "rubric_versions_content_check",
     } <= constraint_names("rubric_versions", CheckConstraint)
     assert "rubric_versions_assignment_id_version_key" in constraint_names(
         "rubric_versions", UniqueConstraint
     )
+    assert {
+        "rubric_versions_provider_config_id_idx",
+        "rubric_versions_one_draft_idx",
+        "rubric_versions_one_confirmed_idx",
+    } <= index_names("rubric_versions")
+    rubric_versions = Base.metadata.tables["rubric_versions"]
+    assert rubric_versions.c.provider_config_id.nullable is True
+    assert rubric_versions.c.model.nullable is True
 
     assert {
         (("assignment_id", "owner_id"), ("assignments.id", "assignments.owner_id"))
@@ -110,10 +136,15 @@ def test_assignment_content_schema_prevents_cross_teacher_links() -> None:
         "submissions_status_check",
         "submissions_media_type_check",
         "submissions_file_check",
+        "submissions_original_filename_check",
+        "submissions_state_check",
+        "submissions_object_keys_check",
     } <= constraint_names("submissions", CheckConstraint)
     assert "submissions_assignment_id_content_sha256_key" in constraint_names(
         "submissions", UniqueConstraint
     )
+    assert "submissions_source_object_key_key" in constraint_names("submissions", UniqueConstraint)
+    assert "submissions_extracted_object_key_idx" in index_names("submissions")
 
 
 def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
@@ -159,6 +190,20 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
     assert "grading_jobs_model_parameters_check" in constraint_names(
         "grading_jobs", CheckConstraint
     )
+    grading_jobs = Base.metadata.tables["grading_jobs"]
+    assert {
+        "result_schema_version",
+        "result_schema_hash",
+        "rubric_hash",
+    } <= set(grading_jobs.c.keys())
+    assert all(
+        grading_jobs.c[column_name].nullable is False
+        for column_name in (
+            "result_schema_version",
+            "result_schema_hash",
+            "rubric_hash",
+        )
+    )
 
     assert {
         (
@@ -181,6 +226,9 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
         "grading_attempts_grading_job_item_id_attempt_number_key",
         "grading_attempts_owner_id_idempotency_key_key",
     } <= constraint_names("grading_attempts", UniqueConstraint)
+    grading_attempts = Base.metadata.tables["grading_attempts"]
+    assert "request_version" in grading_attempts.c
+    assert grading_attempts.c.request_version.nullable is False
 
     assert {
         "teacher_reviews_score_range_check",
@@ -198,6 +246,22 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
     assert "audit_logs_metadata_check" in constraint_names("audit_logs", CheckConstraint)
     assert "exports_owner_id_idempotency_key_key" in constraint_names("exports", UniqueConstraint)
     assert "exports_audit_metadata_check" in constraint_names("exports", CheckConstraint)
+
+
+def test_nullable_jsonb_fields_bind_python_none_as_sql_null() -> None:
+    """可空 JSONB 字段不得把 Python None 写成 JSON null。"""
+
+    dialect = cast(type[Dialect], PGDialect_asyncpg)()
+    for table_name, column_name in (
+        ("rubric_versions", "structured_rubric"),
+        ("grading_attempts", "criteria_results"),
+        ("teacher_reviews", "criteria_results"),
+    ):
+        column_type = Base.metadata.tables[table_name].c[column_name].type
+        processor = column_type.bind_processor(dialect)
+        bound_value = processor(None) if processor is not None else None
+
+        assert bound_value is None, f"{table_name}.{column_name} 必须绑定为 SQL NULL"
 
 
 def test_every_foreign_key_has_a_matching_leftmost_index() -> None:

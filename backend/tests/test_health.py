@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.api.health import get_readiness_probe
 from app.config import Settings
 from app.main import create_app
+from tests.auth_settings import TEST_AUTH_SETTINGS
 
 
 class StubReadinessProbe:
@@ -23,6 +24,7 @@ def build_test_settings() -> Settings:
     return Settings(
         APP_ENV="test",
         DATABASE_URL="postgresql+asyncpg://localhost:5432/paper_grading_test",
+        **TEST_AUTH_SETTINGS,
     )
 
 

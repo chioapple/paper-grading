@@ -3,11 +3,15 @@
 import os
 from enum import StrEnum
 from typing import Literal, Self
+from urllib.parse import urlparse
+from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
+
+from app.security.encryption import ApiKeyCipher, EncryptionConfigurationError
 
 
 class AppEnvironment(StrEnum):
@@ -50,6 +54,21 @@ def validate_supabase_direct_url(value: str, variable_name: str) -> str:
     return value
 
 
+def validate_http_url(value: str, variable_name: str, *, origin_only: bool = False) -> str:
+    """校验浏览器与 Supabase 使用的固定 HTTP(S) 地址。"""
+
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError(f"{variable_name} 必须是有效的 HTTP(S) 地址")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError(f"{variable_name} 不得包含凭据、查询参数或片段")
+    if parsed.hostname not in {"localhost", "127.0.0.1", "::1"} and parsed.scheme != "https":
+        raise ValueError(f"远程 {variable_name} 必须使用 HTTPS")
+    if origin_only and parsed.path not in {"", "/"}:
+        raise ValueError(f"{variable_name} 只能包含来源，不得包含路径")
+    return value.rstrip("/")
+
+
 class Settings(BaseSettings):
     """服务启动所需的配置。"""
 
@@ -62,6 +81,42 @@ class Settings(BaseSettings):
 
     app_env: AppEnvironment = Field(validation_alias="APP_ENV")
     database_url: str = Field(validation_alias="DATABASE_URL")
+    supabase_url: str = Field(validation_alias="SUPABASE_URL")
+    supabase_publishable_key: str = Field(
+        min_length=1,
+        validation_alias="SUPABASE_PUBLISHABLE_KEY",
+    )
+    supabase_secret_key: SecretStr = Field(
+        min_length=1,
+        validation_alias="SUPABASE_SECRET_KEY",
+    )
+    auth_invite_redirect_url: str = Field(validation_alias="AUTH_INVITE_REDIRECT_URL")
+    frontend_origin: str = Field(validation_alias="FRONTEND_ORIGIN")
+    provider_master_key: SecretStr = Field(validation_alias="PROVIDER_MASTER_KEY")
+    supabase_storage_bucket: str = Field(
+        min_length=3,
+        max_length=63,
+        pattern=r"^[a-z0-9][a-z0-9.-]*[a-z0-9]$",
+        validation_alias="SUPABASE_STORAGE_BUCKET",
+    )
+    supabase_storage_signed_url_ttl_seconds: int = Field(
+        default=60,
+        ge=30,
+        le=300,
+        validation_alias="SUPABASE_STORAGE_SIGNED_URL_TTL_SECONDS",
+    )
+    supabase_storage_timeout_seconds: float = Field(
+        default=60.0,
+        ge=10.0,
+        le=300.0,
+        validation_alias="SUPABASE_STORAGE_TIMEOUT_SECONDS",
+    )
+    supabase_auth_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        le=30,
+        validation_alias="SUPABASE_AUTH_TIMEOUT_SECONDS",
+    )
     database_pool_size: int = Field(default=5, ge=1, le=10, validation_alias="DATABASE_POOL_SIZE")
     database_pool_timeout_seconds: float = Field(
         default=5.0,
@@ -76,12 +131,71 @@ class Settings(BaseSettings):
         validation_alias="READINESS_DATABASE_TIMEOUT_SECONDS",
     )
 
+    @classmethod
+    def load(cls) -> Self:
+        """从当前进程环境显式加载配置。"""
+
+        return cls.model_validate(dict(os.environ))
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: str) -> str:
         """只接受应用实际使用的 PostgreSQL 异步驱动。"""
 
         return validate_async_postgresql_url(value, "DATABASE_URL")
+
+    @field_validator("supabase_url")
+    @classmethod
+    def validate_supabase_url(cls, value: str) -> str:
+        """Supabase 项目地址不得携带密钥或额外路径。"""
+
+        return validate_http_url(value, "SUPABASE_URL", origin_only=True)
+
+    @field_validator("frontend_origin")
+    @classmethod
+    def validate_frontend_origin(cls, value: str) -> str:
+        """CORS 只允许一个明确的前端来源。"""
+
+        return validate_http_url(value, "FRONTEND_ORIGIN", origin_only=True)
+
+    @field_validator("auth_invite_redirect_url")
+    @classmethod
+    def validate_auth_invite_redirect_url(cls, value: str) -> str:
+        """邀请和密码恢复只回到固定的前端认证回调页。"""
+
+        validated = validate_http_url(value, "AUTH_INVITE_REDIRECT_URL")
+        if urlparse(validated).path != "/auth/callback":
+            raise ValueError("AUTH_INVITE_REDIRECT_URL 路径必须是 /auth/callback")
+        return validated
+
+    @field_validator("provider_master_key")
+    @classmethod
+    def validate_provider_master_key(cls, value: SecretStr) -> SecretStr:
+        """供应商 Key 加密主密钥必须是严格 Base64 编码的 32 字节。"""
+
+        try:
+            ApiKeyCipher.from_base64_master_key(value.get_secret_value())
+        except EncryptionConfigurationError as error:
+            raise ValueError("PROVIDER_MASTER_KEY 必须是 Base64 编码的 32 字节密钥") from error
+        return value
+
+    @field_validator("supabase_storage_bucket")
+    @classmethod
+    def validate_supabase_storage_bucket(cls, value: str) -> str:
+        """应用只接受可安全拼入 Storage URL 的保守桶名。"""
+
+        if ".." in value or ".-" in value or "-." in value:
+            raise ValueError("SUPABASE_STORAGE_BUCKET 不是有效的桶名")
+        parts = value.split(".")
+        if len(parts) == 4 and all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
+            raise ValueError("SUPABASE_STORAGE_BUCKET 不能是 IP 地址")
+        return value
+
+    @property
+    def supabase_storage_url(self) -> str:
+        """Storage API 与 Auth、PostgreSQL 属于同一个 Supabase 项目。"""
+
+        return f"{self.supabase_url}/storage/v1"
 
     @model_validator(mode="after")
     def validate_production_pooler(self) -> Self:
@@ -137,6 +251,8 @@ class TestMigrationSettings(BaseSettings):
     test_database_reset_confirmation: Literal["I_UNDERSTAND_THIS_DELETES_STAGE_2_DATA"] = Field(
         validation_alias="TEST_DATABASE_RESET_CONFIRMATION"
     )
+    test_teacher_auth_user_id: UUID = Field(validation_alias="TEST_TEACHER_AUTH_USER_ID")
+    test_other_auth_user_id: UUID = Field(validation_alias="TEST_OTHER_AUTH_USER_ID")
 
     @field_validator("test_migration_database_url")
     @classmethod
@@ -168,4 +284,6 @@ class TestMigrationSettings(BaseSettings):
                 raise ValueError("MIGRATION_DATABASE_URL 格式无效，无法确认测试库独立") from error
             if (deployment_url.host or "").lower() == test_host:
                 raise ValueError("TEST_MIGRATION_DATABASE_URL 不得指向部署迁移库")
+        if self.test_teacher_auth_user_id == self.test_other_auth_user_id:
+            raise ValueError("两个 Auth 测试用户必须不同")
         return self

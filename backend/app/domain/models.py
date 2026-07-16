@@ -6,6 +6,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Column,
     DateTime,
@@ -117,14 +118,27 @@ class ProviderConfig(Base):
             name="limits",
         ),
         CheckConstraint(
-            "(encrypted_api_key is null) = (api_key_nonce is null)",
+            "(encrypted_api_key is null and api_key_nonce is null) or "
+            "(encrypted_api_key is not null and api_key_nonce is not null "
+            "and octet_length(api_key_nonce) = 12 and octet_length(encrypted_api_key) >= 17)",
             name="key_material",
         ),
         CheckConstraint(
             "status <> 'enabled' or "
             "(tested_at is not null and encrypted_api_key is not null "
-            "and default_model is not null)",
+            "and default_model is not null and tested_config_version = config_version)",
             name="enabled",
+        ),
+        CheckConstraint(
+            "config_version > 0 and (tested_config_version is null or tested_config_version > 0) "
+            "and ((tested_at is null) = (tested_config_version is null))",
+            name="test_version",
+        ),
+        CheckConstraint("btrim(name) <> '' and btrim(base_url) <> ''", name="text"),
+        CheckConstraint(
+            "default_model is null or (btrim(default_model) <> '' "
+            "and allowed_models @> jsonb_build_array(default_model))",
+            name="default_model",
         ),
         CheckConstraint("jsonb_typeof(allowed_models) = 'array'", name="allowed_models"),
     )
@@ -147,6 +161,10 @@ class ProviderConfig(Base):
     max_concurrency: Mapped[int] = mapped_column(nullable=False, server_default=text("'1'"))
     monthly_budget: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    config_version: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("'1'")
+    )
+    tested_config_version: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -164,6 +182,7 @@ class Assignment(Base):
         UniqueConstraint("id", "owner_id"),
         enum_check("status", AssignmentStatus, "status"),
         CheckConstraint("btrim(title) <> ''", name="title"),
+        CheckConstraint("btrim(instructions) <> ''", name="instructions"),
         Index("assignments_owner_status_created_idx", "owner_id", "status", "created_at"),
     )
 
@@ -206,7 +225,8 @@ class RubricVersion(Base):
         CheckConstraint(
             "(status = 'draft' and confirmed_at is null) or "
             "(status in ('confirmed', 'superseded') and confirmed_at is not null "
-            "and structured_rubric is not null)",
+            "and structured_rubric is not null and provider_config_id is not null "
+            "and btrim(model) <> '')",
             name="confirmation",
         ),
         CheckConstraint(
@@ -214,8 +234,33 @@ class RubricVersion(Base):
             name="structured_rubric",
         ),
         CheckConstraint("btrim(original_rubric) <> ''", name="original_rubric"),
+        CheckConstraint(
+            "((provider_config_id is null and model is null) or "
+            "(provider_config_id is not null and btrim(model) <> '')) "
+            "and (structured_rubric is null or provider_config_id is not null)",
+            name="generation",
+        ),
+        CheckConstraint(
+            "structured_rubric is null or "
+            "public.paper_grading_valid_structured_rubric("
+            "structured_rubric, total_score, score_step)",
+            name="content",
+        ),
         Index("rubric_versions_owner_status_created_idx", "owner_id", "status", "created_at"),
         Index("rubric_versions_assignment_owner_idx", "assignment_id", "owner_id"),
+        Index("rubric_versions_provider_config_id_idx", "provider_config_id"),
+        Index(
+            "rubric_versions_one_draft_idx",
+            "assignment_id",
+            unique=True,
+            postgresql_where=text("status = 'draft'"),
+        ),
+        Index(
+            "rubric_versions_one_confirmed_idx",
+            "assignment_id",
+            unique=True,
+            postgresql_where=text("status = 'confirmed'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -225,10 +270,18 @@ class RubricVersion(Base):
         Uuid, ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False
     )
     assignment_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    provider_config_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("provider_configs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
     original_rubric: Mapped[str] = mapped_column(Text, nullable=False)
-    structured_rubric: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    structured_rubric: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     total_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     score_step: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -238,12 +291,13 @@ class RubricVersion(Base):
 
 
 class Submission(Base):
-    """论文文件元数据；正文和提取文本只存 R2。"""
+    """论文文件元数据；正文和提取文本只存 Supabase Storage。"""
 
     __tablename__ = "submissions"
     __table_args__ = (
         UniqueConstraint("id", "assignment_id", "owner_id"),
         UniqueConstraint("assignment_id", "content_sha256"),
+        UniqueConstraint("source_object_key"),
         ForeignKeyConstraint(
             ["assignment_id", "owner_id"],
             ["assignments.id", "assignments.owner_id"],
@@ -256,16 +310,41 @@ class Submission(Base):
             name="media_type",
         ),
         CheckConstraint(
-            "file_size_bytes > 0 and octet_length(content_sha256) = 32 "
+            "file_size_bytes > 0 and file_size_bytes <= 20971520 "
+            "and octet_length(content_sha256) = 32 "
             "and btrim(source_object_key) <> ''",
             name="file",
         ),
         CheckConstraint(
-            "status <> 'ready' or extracted_object_key is not null",
-            name="ready",
+            "char_length(original_filename) between 1 and 255 and btrim(original_filename) <> ''",
+            name="original_filename",
+        ),
+        CheckConstraint(
+            "(status in ('uploaded', 'parsing') and extracted_object_key is null "
+            "and error_code is null) or "
+            "(status = 'ready' and extracted_object_key is not null and error_code is null) or "
+            "(status = 'failed' and extracted_object_key is null "
+            "and error_code is not null and btrim(error_code) <> '')",
+            name="state",
+        ),
+        CheckConstraint(
+            "source_object_key = 'teachers/' || owner_id::text || "
+            "'/assignments/' || assignment_id::text || '/submissions/' || id::text || "
+            "case when media_type = 'application/pdf' then '/source.pdf' "
+            "else '/source.docx' end "
+            "and (extracted_object_key is null or extracted_object_key = "
+            "'teachers/' || owner_id::text || '/assignments/' || assignment_id::text || "
+            "'/submissions/' || id::text || '/document-blocks.v1.json')",
+            name="object_keys",
         ),
         Index("submissions_owner_status_created_idx", "owner_id", "status", "created_at"),
         Index("submissions_assignment_owner_idx", "assignment_id", "owner_id"),
+        Index(
+            "submissions_extracted_object_key_idx",
+            "extracted_object_key",
+            unique=True,
+            postgresql_where=text("extracted_object_key is not null"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -307,8 +386,14 @@ class GradingJob(Base):
         ),
         enum_check("status", GradingJobStatus, "status"),
         CheckConstraint(
-            "btrim(model) <> '' and btrim(prompt_version) <> '' "
-            "and octet_length(prompt_hash) = 32 and btrim(idempotency_key) <> ''",
+            "provider_config_version > 0 and btrim(model) <> '' "
+            "and jsonb_typeof(result_schema) = 'object' "
+            "and btrim(prompt_version) <> '' "
+            "and octet_length(prompt_hash) = 32 "
+            "and btrim(result_schema_version) <> '' "
+            "and octet_length(result_schema_hash) = 32 "
+            "and octet_length(rubric_hash) = 32 "
+            "and btrim(idempotency_key) <> ''",
             name="snapshot",
         ),
         CheckConstraint(
@@ -344,12 +429,17 @@ class GradingJob(Base):
     provider_config_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("provider_configs.id", ondelete="RESTRICT"), nullable=False
     )
+    provider_config_version: Mapped[int] = mapped_column(nullable=False)
     model: Mapped[str] = mapped_column(Text, nullable=False)
     model_parameters: Mapped[dict[str, object]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    result_schema_version: Mapped[str] = mapped_column(Text, nullable=False)
+    result_schema: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    result_schema_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    rubric_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -432,12 +522,18 @@ class GradingAttempt(Base):
             name="score_range",
         ),
         CheckConstraint(
-            "octet_length(request_hash) = 32 and btrim(idempotency_key) <> ''",
+            "btrim(request_version) <> '' and octet_length(request_hash) = 32 "
+            "and btrim(idempotency_key) <> ''",
             name="request",
         ),
         CheckConstraint(
             "criteria_results is null or jsonb_typeof(criteria_results) = 'array'",
             name="criteria_results",
+        ),
+        CheckConstraint(
+            "((raw_response_object_key is null) = (raw_response_sha256 is null)) "
+            "and (raw_response_sha256 is null or octet_length(raw_response_sha256) = 32)",
+            name="raw_response",
         ),
         CheckConstraint(
             "(status = 'running' and finished_at is null) or "
@@ -460,13 +556,17 @@ class GradingAttempt(Base):
     grading_job_item_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     attempt_number: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'running'"))
+    request_version: Mapped[str] = mapped_column(Text, nullable=False)
     request_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     max_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     total_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
-    criteria_results: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    criteria_results: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     overall_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_response_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_response_sha256: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -536,7 +636,9 @@ class TeacherReview(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
     max_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     final_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
-    criteria_results: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    criteria_results: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     evidence: Mapped[list[dict[str, object]]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")

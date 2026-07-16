@@ -19,6 +19,14 @@ services:
     buildFilter:
       paths:
         - frontend/**
+        - infra/render.yaml
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_API_BASE_URL
+        sync: false
     routes:
       - type: rewrite
         source: /*
@@ -50,3 +58,23 @@ services:
         value: 5.0
       - key: READINESS_DATABASE_TIMEOUT_SECONDS
         value: 2.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_AUTH_TIMEOUT_SECONDS
+        value: 5.0
+      - key: SUPABASE_STORAGE_BUCKET
+        sync: false
+      - key: SUPABASE_STORAGE_SIGNED_URL_TTL_SECONDS
+        value: 60
+      - key: SUPABASE_STORAGE_TIMEOUT_SECONDS
+        value: 60.0
+      - key: PROVIDER_MASTER_KEY
+        sync: false
+      - key: AUTH_INVITE_REDIRECT_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
