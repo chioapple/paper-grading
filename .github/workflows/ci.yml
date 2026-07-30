@@ -167,7 +167,7 @@ jobs:
             metadata jsonb
           );
           SQL
-      - name: Replay empty database to 0018, 0019, base, and 0019
+      - name: Replay empty database to 0018, 0019, 0017, and 0019
         env:
           MIGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/paper_grading_ci # pragma: allowlist secret
         run: |
@@ -175,7 +175,8 @@ jobs:
           alembic current | grep -qx '20260726_0018'
           alembic upgrade 20260728_0019
           alembic current | grep -Eq '^20260728_0019( \(head\))?$'
-          alembic downgrade base
+          alembic downgrade 20260722_0017
+          alembic current | grep -qx '20260722_0017'
           alembic upgrade 20260728_0019
           alembic current | grep -Eq '^20260728_0019( \(head\))?$'
         working-directory: backend
