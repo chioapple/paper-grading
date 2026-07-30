@@ -12,8 +12,16 @@
 当前样本解析、当前迁移头、真实队列与 Worker，以及启用供应商连接。重复执行
 100 次付费评分不会验证新的代码边界，因此第 6.2 节按组合证据通过。
 
-阶段 14 剩余工作是发布候选提交与 GitHub CI、Render 真实部署、部署后运行态验收、
-告警触发、回滚演练、备份/清理关闭状态复核和网络限制例外记录。
+发布 SHA `e1dc43ce907618a6143939bd9a61d23fec782e14` 的 GitHub CI 已通过 8、
+失败 0。用户随后决定以个人、非商业、零基础设施月费方式落地：前端使用 Sites，
+Supabase 继续承载数据库、Auth 和 Storage，常开 Mac 承载 FastAPI、本机 Redis、
+评分/维护 Worker 和导出 Worker，Tailscale Funnel 提供 HTTPS，`launchd` 管理进程，
+UptimeRobot 提供外部告警。
+
+Sites 项目已经创建，前端 Sites 构建、SPA 深层路径改写和安全响应头回归通过 2、
+失败 0。阶段 14 剩余工作是完成 Tailscale 登录与 Funnel、生产环境配置、本机服务
+部署、Sites 正式版本发布、部署后运行态验收、告警触发、回滚演练、备份/清理关闭
+状态复核和网络限制例外记录。
 
 ## 1. 验收原则
 
@@ -31,14 +39,14 @@
 - Worker claim、租约、重试或失败收口变化；
 - Excel 冻结快照或行映射变化；
 - 供应商适配器、提示词、Rubric、解析器或 Schema 变化；
-- Render 服务、域名、CORS、环境变量或数据库角色变化。
+- Sites 版本、Tailscale Funnel、Mac 运行进程、域名、CORS、环境变量或数据库角色变化。
 
 ## 2. 已完成证据
 
 | 范围 | 结果 | 证据边界 |
 |---|---|---|
 | 本地静态检查、单元/契约测试、构建 | 已完成 | 后端 491 通过、前端 73 通过、本地浏览器 2 通过，失败 0 |
-| CI 串行门禁 | 待发布候选验证 | 格式、类型、单元、集成、迁移、构建、浏览器和密钥扫描；CI 不自动部署 |
+| CI 串行门禁 | 8 通过、失败 0 | SHA `e1dc43c`；格式、类型、单元、集成、迁移、构建、浏览器和密钥扫描；CI 不自动部署 |
 | 4.1 PostgreSQL 迁移与权限 | 8 通过、失败 0 | 独立 Supabase 项目，最终迁移头 `20260728_0019` |
 | 4.2 Auth、JWT 与 Storage | 3 通过、失败 0 | 账户状态、管理员边界、私有对象和签名 URL |
 | 5 Redis、Celery 与 Worker | 已完成 | 以用户本次最终确认为准；此前未完成描述作废 |
@@ -84,9 +92,10 @@
 明确 SLA、样本、费用上限和停止条件，再作为独立性能测试执行；它不属于本次阶段 14
 功能验收，也不能与后续评分质量校准混为一谈。
 
-## 4. Render 真实部署
+## 4. Sites 与常开 Mac 真实部署
 
-执行位置：Render Dashboard、受控迁移终端、Render Shell 和 Supabase Dashboard。
+执行位置：Codex Sites、常开 Mac、本机受控终端、Chrome、Tailscale、
+UptimeRobot 和 Supabase Dashboard。
 操作依据：[部署 Runbook](runbooks/deployment.md)、
 [生产冒烟 Runbook](runbooks/smoke-test.md)、
 [监控与故障 Runbook](runbooks/monitoring-and-incidents.md)、
@@ -94,11 +103,14 @@
 
 ### 4.1 前置条件
 
-- 用户已确认 Render Worker 与 Key Value 费用；
 - 发布候选 commit SHA 的 CI 全部通过；
-- API、评分/维护 Worker、导出 Worker和前端全部绑定同一 SHA；
-- Render 自动部署关闭；
-- 已记录一个与 `0019`、专用数据库角色和当前环境变量兼容的回滚 SHA；
+- Sites 构建和 Mac 上 API、评分/维护 Worker、导出 Worker来自同一发布 SHA；
+- Sites 保持仅本人访问，若以后改为公开必须单独确认访问范围；
+- Tailscale 使用个人非商业账户，Funnel 只代理本机 `127.0.0.1:8000`；
+- Redis 只监听本机，API 不直接监听公网地址；
+- `.env.stage14-production` 和 `.env.stage14-grading-worker` 位于仓库忽略范围，
+  权限为 `0600`，专用 Worker 角色探针通过；
+- 已记录一个与 `0019`、专用数据库角色和当前环境变量兼容的回滚 SHA 或 Sites 版本；
 - 生产迁移只前向执行，不 downgrade；
 - 自动清理、备份创建和备份清理继续关闭。
 
@@ -107,14 +119,15 @@
 ### 4.2 固定顺序
 
 1. 数据库前向迁移到 `20260728_0019`；
-2. 部署 API；
-3. 启用 Redis；
-4. 部署评分/维护 Worker；
-5. 部署 Excel 导出 Worker；
-6. 部署前端；
-7. 执行部署后冒烟；
-8. 触发告警测试；
-9. 执行回滚并恢复发布候选。
+2. 验证本机 Redis；
+3. 配置生产环境文件和专用数据库角色；
+4. 通过 `launchd` 启动 API、评分/维护 Worker、Excel 导出 Worker和防休眠进程；
+5. 登录 Tailscale、启用 Funnel，并把 API 限定为 Funnel HTTPS；
+6. 使用正式 Funnel URL 构建并部署 Sites 前端；
+7. 在 Supabase 更新正式前端和 `/auth/callback` 地址；
+8. 执行部署后冒烟；
+9. 触发 UptimeRobot 告警与恢复测试；
+10. 执行 Mac 后端和 Sites 前端回滚，再恢复发布候选。
 
 任一步失败，后续步骤停止。Redis 不清空，数据库不回退。
 
@@ -122,20 +135,23 @@
 
 | 范围 | 必须满足 |
 |---|---|
-| 版本 | 数据库为 `0019`；所有 Render 服务使用同一已通过 CI 的 SHA |
-| HTTPS 与 CORS | 正式域名仅 HTTPS；CORS 只允许正式前端域名；错误来源被拒绝 |
+| 版本 | 数据库为 `0019`；Sites 构建和 Mac 进程使用同一已通过 CI 的 SHA |
+| Sites | 正式版本部署成功；`/login`、`/auth/callback`、`/assignments`、`/grading-jobs` 和 `/exports` 直接打开或刷新不返回 404 |
+| HTTPS 与 CORS | Funnel 只提供 HTTPS；CORS 只允许 Sites 正式域名；错误来源被拒绝 |
 | API | live、ready 健康检查通过；安全响应头存在；响应不泄露内部错误或密钥 |
-| Worker | 三类 Worker 心跳存在；只消费各自队列；专用数据库角色探针通过 |
+| 本机边界 | Redis 和 API 只监听 `127.0.0.1`；外部不能绕过 Funnel 访问本机端口；环境文件为 `0600` |
+| 自动恢复 | API、三类 Worker、Tailscale 和防休眠进程由 `launchd` 管理；退出后自动恢复，重新登录 Mac 后自动启动 |
+| Worker | `grading@`、`maintenance@`、`exports@` 心跳存在；只消费各自队列；专用数据库角色探针通过 |
 | 队列 | 冒烟完成后 queued、running 和未确认消息回到 0 |
 | 浏览器完整链 | 只执行 1 篇真实论文：邀请、回调设密、登录、创建作业、Rubric、上传、评分、复核和 Excel 下载全部成功 |
 | 手机端 | 复用同一批次，在 `390 × 844` 检查登录后主要页面、复核、导出下载、横向溢出和 Console；不再创建第二个付费批次 |
 | 下载 | Excel 非空、可打开、来源与该批次一致；签名 URL 过期后不能继续使用 |
-| 告警 | 至少一次可逆测试实际触发并被接收；只看到面板配置不算通过 |
-| 回滚 | 回到已验证兼容 SHA 后服务正常，再恢复发布候选；数据库仍为 `0019`，Redis 未清空 |
+| 告警 | UptimeRobot HTTP 或 heartbeat 告警至少一次可逆测试实际触发并被接收，恢复通知也被接收 |
+| 回滚 | Mac 后端回到兼容 SHA、Sites 回到兼容版本后服务正常，再恢复发布候选；数据库仍为 `0019`，Redis 未清空 |
 
-安全回传只包含：发布 SHA、迁移版本、服务状态、HTTP 状态、Worker/队列计数、告警是否
-收到、回滚结果和测试通过/失败数量。不得回传环境变量、邮箱、Token、Key、连接地址、
-论文、模型原始响应、对象路径或签名 URL。
+安全回传只包含：发布 SHA、Sites 版本、迁移版本、服务状态、HTTP 状态、Worker/队列
+计数、告警是否收到、回滚结果和测试通过/失败数量。不得回传环境变量、邮箱、Token、
+Key、连接地址、论文、模型原始响应、对象路径或签名 URL。
 
 ## 5. 备份、自动清理与网络限制
 
@@ -149,7 +165,8 @@
 - 本地加密测试不能表述为真实恢复成功。
 
 因此，真实备份恢复不再作为阶段 14 完成条件。部署时只需确认上述开关仍为关闭，
-且 Render 没有误配备份或清理服务。未来启用任一能力时，必须重新取得用户授权，并按
+且 Mac 的 `launchd` 与环境文件没有误配备份或清理进程。未来启用任一能力时，必须
+重新取得用户授权，并按
 [备份与恢复 Runbook](runbooks/backup-and-restore.md) 单独完成真实恢复验收。
 
 在此之前，项目不得宣称已经具备应用级独立备份恢复能力。
@@ -157,7 +174,7 @@
 ### 5.2 数据库网络限制
 
 Database Network Restrictions 当前全网放行是用户已接受的例外，但不是安全配置。
-Render 部署时必须在目标 Supabase 项目重新只读复核，并记录：
+Sites 与 Mac 部署时必须在目标 Supabase 项目重新只读复核，并记录：
 
 - 项目标识；
 - 复核时间；
@@ -173,7 +190,7 @@ Render 部署时必须在目标 Supabase 项目重新只读复核，并记录：
 
 - 第 2 节已完成证据仍有效；
 - 第 3 节 100 篇组合证据仍有效；
-- 第 4 节 Render 部署、部署后冒烟、告警和回滚全部通过；
+- 第 4 节 Sites 与 Mac 部署、部署后冒烟、告警和回滚全部通过；
 - 第 5 节备份/清理关闭状态和网络限制例外已在目标环境记录；
 - Bug Review 与第一性原理复查没有未解决问题；
 - `task_plan.md`、`progress.md`、`findings.md` 和 `CONTEXT.md` 已同步。

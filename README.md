@@ -4,7 +4,10 @@
 
 Paper Grading 是一个面向教师的云端英文作文批改网站。管理员创建教师账户并统一配置模型 API；教师创建作业、确认评分标准、批量上传论文、复核 AI 评分建议并导出 Excel。
 
-阶段 1 至阶段 13 已完成。阶段 14 本地开发与自动化验收已完成，真实 Supabase/Redis、供应商、100 篇、Render 和生产证据仍待取得，因此阶段 14 保持进行中。自动清理与备份保持关闭。评分提示词为 `grading-prompt.v3`，历史版本仍按原快照重建。
+阶段 1 至阶段 13 已完成。阶段 14 第 6.2 节及之前已经完成，当前正在把部署切换为
+Sites 前端、常开 Mac 后端、本机 Redis、Tailscale Funnel、`launchd` 和 UptimeRobot。
+Sites 项目与前端适配已经完成，真实部署、告警和回滚仍在验收，因此阶段 14 保持进行中。
+自动清理与备份保持关闭。评分提示词为 `grading-prompt.v3`，历史版本仍按原快照重建。
 
 ## 计划功能
 
@@ -29,7 +32,7 @@ Paper Grading 是一个面向教师的云端英文作文批改网站。管理员
 | 数据库和认证 | Supabase PostgreSQL + Auth |
 | 文件存储 | Supabase Storage 私有桶 |
 | 批量任务 | Celery + Redis |
-| 网站部署 | Render Static Site + Web Service + Background Worker |
+| 网站部署 | Sites 前端 + 常开 Mac API/Worker + Tailscale Funnel |
 | 模型调用 | 服务端 Provider Adapter |
 
 调用关系和模块职责见 `ARCHITECTURE.md`。
@@ -108,7 +111,8 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 
 前端还需显式提供 `VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY` 和 `VITE_API_BASE_URL`。`SUPABASE_SECRET_KEY`、`PROVIDER_MASTER_KEY` 和模型 API Key 只能存在于后端，不能使用 `VITE_` 前缀。生产 API 启动时会读取 Supabase Auth 公开设置；公开注册未关闭时直接停止启动。
 
-可在本机生成 `PROVIDER_MASTER_KEY`，生成结果只保存到本地后端环境或 Render Secret：
+可在本机生成 `PROVIDER_MASTER_KEY`，生成结果只保存到本机
+`.env.stage14-production` 或本地开发环境：
 
 ```bash
 ./.venv/bin/python -c 'import base64,secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())'
@@ -118,19 +122,22 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 
 ## 部署
 
-`infra/render.yaml` 已固定前端、API、评分/维护 Worker、独立 Excel 导出 Worker 和持久化 Key Value 的构建与启动配置，但自动部署关闭，尚未创建任何 Render 资源。Worker 和 Key Value 使用 Starter，创建前必须确认付费。导出 Worker 不注入 `PROVIDER_MASTER_KEY`。
+个人非商业部署不再使用 Render。`frontend/.openai/hosting.json` 绑定 Sites 项目；
+`frontend/sites/worker.js` 提供 SPA 深层路径回退和安全响应头；`infra/local/` 管理本机
+API、评分/维护 Worker、独立 Excel 导出 Worker、Tailscale、防休眠和 watchdog。
+本机 Redis 只作为 broker，业务状态仍以 PostgreSQL 为准。
 
 导出 Worker 也不接收通用 `DATABASE_URL`。`0017` 创建可登录、无初始密码的 `paper_grading_export_worker` 最小角色；部署者须在数据库侧单独设置强密码，并把该角色的 Supavisor session pooler 5432 地址仅注入 `EXPORT_DATABASE_URL`。该角色只能读冻结导出表并执行领取、完成和失败函数，不能读取供应商、作业、论文、评分 attempt 或教师复核来源表。
 
 评分/维护 Worker 同样不能使用 API 数据库角色。`0019` 把既有 `paper_grading_worker` 最小角色改为可登录，并只增加私有 schema 使用权与两个 Storage 配额函数执行权，不增加表权限或设置密码；部署者须在数据库侧交互设置独立强密码，并把 `paper_grading_worker.<project-ref>` 的 Supavisor session pooler 5432 地址仅注入评分 Worker 的 `DATABASE_URL`。
 
-Render 免费 Web Service 不支持 pre-deploy command。每次手动部署 API 前，必须先在受控环境显式执行迁移；迁移失败就停止部署：
+每次发布 Mac 后端和 Sites 前端前，必须先在受控环境显式执行迁移；迁移失败就停止部署：
 
 ```bash
 MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-`MIGRATION_DATABASE_URL` 必须是启用 SSL 的 Supabase direct 直连地址，只在支持 IPv6 的受控迁移环境临时提供，不得注入 Render API，也不得回退使用 `DATABASE_URL`。
+`MIGRATION_DATABASE_URL` 必须是启用 SSL 的 Supabase direct 直连地址，只在支持 IPv6 的受控迁移环境临时提供，不得注入 API 或 Worker 运行环境，也不得回退使用 `DATABASE_URL`。
 
 阶段 3 的真实 Auth 验收步骤见 `docs/STAGE3_ACCEPTANCE.md`，阶段 4 的隔离验收见 `docs/STAGE4_ACCEPTANCE.md`，阶段 5 的模型配置迁移见 `docs/STAGE5_ACCEPTANCE.md`，阶段 6 的真实 Rubric 流程见 `docs/STAGE6_ACCEPTANCE.md`，阶段 7 的 Supabase Storage、迁移和上传验收见 `docs/STAGE7_ACCEPTANCE.md`，阶段 8 的评分快照迁移见 `docs/STAGE8_ACCEPTANCE.md`，阶段 10 的批量流水线验收见 `docs/STAGE10_ACCEPTANCE.md`，阶段 11 的教师复核验收见 `docs/STAGE11_ACCEPTANCE.md`，阶段 12 的迁移、权限、Storage、Excel 和浏览器步骤见 `docs/STAGE12_ACCEPTANCE.md`。阶段 13 验收见 `docs/STAGE13_ACCEPTANCE.md`，阶段 14 总验收见 `docs/STAGE14_ACCEPTANCE.md`；部署、回滚、冒烟、监控与恢复步骤统一位于 `docs/runbooks/`。外部写入、付费和破坏性操作仍只由用户明确授权后执行。
 
@@ -196,7 +203,7 @@ find frontend/dist -type f -print0 |
 
 - [skills.sh](https://skills.sh/)：未发现可以直接替代本项目完整开发流程的单一技能；继续采用当前分阶段方案，避免引入来源不明的完整脚手架。
 - [Supabase 开源仓库](https://github.com/supabase/supabase)：确认 PostgreSQL、Auth、Storage 和 RLS 组合适合账户与数据隔离，但业务批改仍保留在 FastAPI。
-- [Supabase 数据库连接文档](https://supabase.com/docs/guides/database/connecting-to-postgres)：Render 运行时使用 IPv4 的 session pooler 5432；迁移使用 direct 地址，二者不共用配置。
+- [Supabase 数据库连接文档](https://supabase.com/docs/guides/database/connecting-to-postgres)：Mac 运行时使用 session pooler 5432；迁移使用 direct 地址，二者不共用配置。
 - [OpenAI Python SDK](https://github.com/openai/openai-python)：确认异步客户端和流式接口可作为官方 OpenAI 适配器基础，不将其当作所有供应商完全兼容的证明。
 - [Open WebUI provider 文档](https://github.com/open-webui/docs/blob/main/docs/getting-started/quick-start/connect-a-provider/starting-with-openai-compatible.mdx)：参考其“协议兼容与供应商能力分离”思路；不采用其完整应用架构。
 - GitHub 未找到同时满足“教师人工复核、严格 Rubric、批量论文、RLS、多供应商适配”的可直接复用完整项目，因此不复制现有仓库。
@@ -229,8 +236,8 @@ find frontend/dist -type f -print0 |
 - [OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)：官方 OpenAI 适配器使用 Responses 与严格 JSON Schema，不复用通用兼容协议。
 - [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create)：Anthropic 使用独立认证、结构化输出、停止原因和缓存用量字段。
 - [Gemini GenerateContent](https://ai.google.dev/api/generate-content)：Gemini 使用独立 Schema、思考用量、拒答和截断信号，保持默认采样参数。
-- [Render Celery 部署文档](https://render.com/docs/deploy-celery)：Celery Worker 使用 Render Key Value 作为 broker，应用状态不存入队列。
-- [Render Blueprint 规范](https://render.com/docs/blueprint-spec)：Background Worker 不提供免费实例；Key Value 使用内部连接、`noeviction` 和持久化 Starter，避免队列消息被内存策略主动淘汰。
+- [Tailscale Funnel 文档](https://tailscale.com/docs/features/tailscale-funnel)：个人非商业部署使用固定 `*.ts.net` HTTPS 入口，本机 API 不直接开放公网端口。
+- [Sites 文档](https://learn.chatgpt.com/docs/sites)：前端通过 Sites 保存版本并部署，运行时密钥不写入 `.openai/hosting.json`。
 
 ## 已完成
 
@@ -263,7 +270,7 @@ find frontend/dist -type f -print0 |
 - [x] 完成阶段 12 真实 Supabase、Storage、Excel 和浏览器验收。
 - [x] 完成阶段 13 配额、保留与备份安全基础及真实配额验收。
 - [x] 确认阶段 13 自动清理和备份保持关闭，后续启用时单独验收。
-- [x] 完成阶段 14 本地测试、安全修复、CI、Render 配置、浏览器自动化和运维文档。
+- [x] 完成阶段 14 第 6.2 节及之前验收、Sites 前端适配和本机部署脚本。
 
 ## 待办
 

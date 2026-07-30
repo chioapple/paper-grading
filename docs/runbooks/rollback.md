@@ -1,68 +1,74 @@
 # 失败部署回滚 Runbook
 
+执行终端、前置条件、预期结果和安全回传必须按每一步记录；安全回传只包含 Git SHA、
+Sites 版本、revision、状态码、进程状态和队列计数。
+
 ## 原则
 
-- 先阻止新流量和新任务，再回滚应用；生产数据库不 downgrade。
-- 只回滚到确认兼容 `0019` 的最后成功 API、Worker 和前端构建。
-- Redis 不清空；运行中任务由现有租约、幂等和失败收口处理。
-- 若新迁移与旧代码不兼容，保持服务停止，新增前向修复迁移。
-- 只有预发布时已在 `0019`、专用 Worker 数据库角色和精简环境变量下验证并记录的 `STAGE14_ROLLBACK_SHA` 才能作为回滚目标；没有该证据时保持服务 Suspend，直接进入前向修复。
+- 先停止新任务，再回滚应用；生产数据库不 downgrade。
+- 后端只回滚到确认兼容 `0019` 的 Git SHA。
+- 前端只回滚到确认兼容当前 Funnel API 和 Supabase 配置的 Sites 保存版本。
+- Redis 不清空；运行中任务由既有租约、幂等和失败收口处理。
+- 若新迁移与旧代码不兼容，保持进程停止，新增前向修复迁移。
 
 ## 操作
 
 ### 1. 冻结
 
-执行终端：Render Dashboard。
-前置条件：已确认部署失败。
-预期结果：先在 Render Suspend 评分/维护 Worker 和导出 Worker，再 Suspend API；静态前端可以继续显示，但所有 API 写入均失败关闭。
-安全回传：停止的服务名和时间，不回传任务内容。
+执行终端：本机。
+预期结果：先停止评分/维护 Worker和导出 Worker，再停止 API；Sites 前端可以继续显示，
+但 API 写入失败关闭。
+
+```bash
+launchctl bootout \
+  "gui/$UID" \
+  "$HOME/Library/LaunchAgents/com.paper-grading.grading.plist"
+launchctl bootout \
+  "gui/$UID" \
+  "$HOME/Library/LaunchAgents/com.paper-grading.export.plist"
+launchctl bootout \
+  "gui/$UID" \
+  "$HOME/Library/LaunchAgents/com.paper-grading.api.plist"
+```
 
 ### 2. 记录现场
 
-执行终端：Render Dashboard 与 Supabase SQL Editor。
-前置条件：服务已冻结。
-预期结果：记录失败服务、构建 ID、迁移 revision、队列长度和安全错误分类。
-安全回传：构建 ID、revision、计数和错误分类；日志必须脱敏。
+只记录失败进程、Git SHA、Sites 版本、迁移 revision、队列计数和稳定错误分类。日志必须
+脱敏，不记录环境变量或任务内容。
 
-### 3. 回滚应用
+### 3. 回滚 Mac 后端
 
-执行终端：Render Dashboard。
-前置条件：已选择预发布证据中记录的 `STAGE14_ROLLBACK_SHA`；它已在 `0019` 和当前最小环境变量下通过 API ready、Worker 数据库探针与心跳。若不存在，停止本节并保持服务 Suspend。
-预期结果：全部选择同一个已确认兼容 `0019` 的 commit SHA；依次 Resume/恢复 API、评分/维护 Worker、导出 Worker、前端；Redis 保留原数据。
-安全回传：各服务回滚后的构建 ID和状态。
+前置条件：目标 SHA 已在 `0019`、当前生产环境文件和专用 Worker 角色下通过验证。
+预期结果：工作树切到目标 SHA 后，依次恢复 API、评分/维护 Worker和导出 Worker；
+Redis 保留原数据。
 
-### 4. 验证
+不得用 `git reset --hard` 或覆盖用户改动。验收时使用单独保存的、已验证构建目录切换
+`current` 符号链接；如果尚未准备该目录，保持服务停止并先完成前向修复。
 
-执行终端：本机项目根目录。
-前置条件：回滚构建已启动。
-预期结果：健康检查、心跳、队列和只读冒烟通过；写入测试仅在用户授权后执行。
-安全回传：通过/失败数量和状态码。
+### 4. 回滚 Sites
 
-```bash
-cd "/Users/a1-6/Documents/Paper Grading"
-test -n "${STAGE14_API_BASE_URL:?missing STAGE14_API_BASE_URL}"
-curl --fail --silent --show-error "${STAGE14_API_BASE_URL%/}/health/live" >/dev/null
-curl --fail --silent --show-error "${STAGE14_API_BASE_URL%/}/health/ready" >/dev/null
-```
+执行位置：Codex Sites。
+前置条件：目标 Sites 版本已经保存并验证，与回滚后端 SHA 和当前 Supabase 配置兼容。
+预期结果：部署该保存版本后，登录、深层路径刷新和只读 API 健康检查通过。
 
-### 5. 恢复发布候选
-
-执行终端：Render Dashboard、本机项目根目录和 Supabase SQL Editor。
-前置条件：第 4 步回滚验证通过；`STAGE14_RELEASE_SHA` 仍是本轮已通过 CI 的发布候选。
-预期结果：对 API、评分/维护 Worker、导出 Worker和前端依次选择 “Deploy a specific commit”，部署同一个 `STAGE14_RELEASE_SHA`；恢复后 live/ready、三个 Worker 心跳和只读冒烟通过，数据库仍为 `0019`，Redis 未清空。
-安全回传：发布 SHA、构建 ID、状态码、心跳、revision 和 Redis 计数；不回传环境变量。
+### 5. 验证
 
 ```bash
 cd "/Users/a1-6/Documents/Paper Grading"
-test -n "${STAGE14_RELEASE_SHA:?missing release SHA}"
+./infra/local/verify-runtime.sh
 test -n "${STAGE14_API_BASE_URL:?missing API URL}"
-curl --fail --silent --show-error "${STAGE14_API_BASE_URL%/}/health/live" >/dev/null
-curl --fail --silent --show-error "${STAGE14_API_BASE_URL%/}/health/ready" >/dev/null
+curl --fail --silent --show-error \
+  "${STAGE14_API_BASE_URL%/}/health/live" >/dev/null
+curl --fail --silent --show-error \
+  "${STAGE14_API_BASE_URL%/}/health/ready" >/dev/null
 ```
 
-### 6. 数据库处置
+### 6. 恢复发布候选
 
-执行终端：Supabase SQL Editor。
-前置条件：确认问题来自迁移且旧代码不能安全运行。
-预期结果：不执行 downgrade；服务保持停止，创建新的前向修复迁移后重新走 CI。
-安全回传：当前 revision 和是否需要前向修复，不回传查询结果中的业务数据。
+依次恢复发布候选后端目录和 Sites 版本，再次验证 live、ready、三个 Worker 心跳、队列、
+数据库 revision 和 Sites 深层路径。数据库仍为 `0019`，Redis 未清空。
+
+### 7. 数据库处置
+
+如果问题来自迁移且旧代码不能安全运行，不执行 downgrade。服务保持停止，创建新的
+前向修复迁移后重新走 CI。

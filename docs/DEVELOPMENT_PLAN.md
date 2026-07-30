@@ -25,7 +25,7 @@ Paper Grading/
 │   │   └── export/           # Excel 导出
 │   └── tests/
 ├── backend/migrations/       # Alembic 数据表、约束和 RLS 迁移
-├── infra/                    # Render 与 Supabase Storage 配置
+├── infra/                    # 常开 Mac、Tailscale 和进程管理配置
 ├── e2e/                      # 浏览器全流程测试
 ├── docs/
 ├── CONTEXT.md
@@ -57,7 +57,7 @@ Paper Grading/
 - `backend/`
 - `.env.example`
 - `.gitignore`
-- `infra/render.yaml`
+- `infra/local/`
 
 **Action**
 
@@ -438,7 +438,9 @@ Paper Grading/
 - `frontend/src/**/*.test.tsx`
 - `e2e/`
 - `.github/workflows/ci.yml`
-- `infra/render.yaml`
+- `frontend/.openai/hosting.json`
+- `frontend/sites/`
+- `infra/local/`
 - `docs/runbooks/`
 
 **Action**
@@ -450,13 +452,15 @@ Paper Grading/
 - 浏览器测试覆盖邀请、登录、创建作业、上传、批改、复核和导出。
 - 安全测试覆盖 SSRF、恶意文件、提示注入、签名 URL 和密钥泄露。
 - CI 依次执行格式、类型、单元、集成、迁移回放和密钥扫描。
-- 部署顺序固定为：数据库迁移 → API → Redis → Worker → 前端 → 冒烟测试。
+- 部署顺序固定为：数据库迁移 → 本机 Redis → Mac API/Worker → Tailscale Funnel →
+  Sites 前端 → 冒烟测试。
 
 **Verify**
 
 - 失败测试会阻止部署。
 - 生产网站通过 HTTPS 访问，CORS 只允许正式前端域名。
 - 健康检查、Worker 心跳、队列等待、失败率和容量告警可见。
+- Mac 重新登录后 `launchd` 自动恢复 API、Worker、Tailscale 和防休眠进程。
 - 回滚演练成功；备份按阶段 13 的已批准范围保持关闭，未来启用时再单独执行真实恢复演练。
 
 **Done**

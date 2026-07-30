@@ -38,7 +38,9 @@
 
 - `shadcn` 只有在项目明确采用 shadcn/ui 后才能使用，不能因 skill 存在而擅自增加依赖。
 - `openai-docs` 和 `openai-developers` 不能替代 DeepSeek、Kimi、GLM、Anthropic、Gemini 的官方文档和真实测试。
-- `sites` 不用于本项目，当前部署方案固定为 Render。
+- 本项目个人非商业部署使用 `sites` 托管前端；FastAPI、Redis 和三个 Worker 运行在
+  用户常开 Mac，Tailscale Funnel 提供 HTTPS，`launchd` 管理进程。Render 配置已退出
+  当前方案。
 - 禁止使用 `using-git-worktrees` 或擅自创建 worktree。
 - 项目明确采用可审计的批量评分流水线，不使用 Agents SDK 或开放式自治智能体架构。
 - `superpowers` 和 `codex-security` 即使配置为启用，也必须先确认当前会话实际暴露对应 skill 后才能调用。

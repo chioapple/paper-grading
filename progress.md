@@ -386,3 +386,17 @@
 - 按真实失败先增加回归断言，再在 CI 一次性数据库创建 `anon`、`authenticated`、`service_role` 三个无登录角色；目标测试 4 通过、失败 0，Ruff、格式和差异检查通过。本机没有 Docker，完整空库升级、回退和再升级由修复后的 GitHub CI 重新验证。
 - 修复提交 `9394b99` 的 CI 前四项通过；空库已真实从 `base` 成功升级到 `20260726_0018`，随后旧命令因错误要求 `alembic current` 输出带尾随空格而假失败。已用精确的中间 revision 匹配和允许 head 标记的最终 revision 匹配修正，回归测试 4 通过、失败 0。
 - 修复提交 `ff11410` 的 CI 已从空库完整升级到 `20260728_0019`，随后额外回退 `base` 重现已知 `0012` 历史缺陷。CI 改为与阶段 14 真实 4.1 相同的 `base → 0019 → 0017 → 0019`：既证明全链前向迁移，也验证当前阶段可回退边界；不修改已发布迁移。
+- 发布 SHA `e1dc43ce907618a6143939bd9a61d23fec782e14` 的 GitHub CI 最终 8 通过、失败 0；格式、类型、单元、集成、空库迁移、生产构建、桌面/手机浏览器和仓库/构建密钥扫描全部通过。
+- Render 已完成登录和只读盘点：Hobby 工作区没有现有服务、Blueprint 或付款方式。已从公开仓库 `main` 读取 `infra/render.yaml`，Blueprint 在创建资源前要求添加付款方式；银行卡和账单地址留给用户亲自输入，尚未创建或计费。
+- 回滚候选复核确认 `e4c6f6d` 到发布 SHA `e1dc43c` 之间没有生产后端、前端或 `infra/render.yaml` 差异；首次部署可先在 `0019` 和精简生产环境中验证该旧 SHA，再部署发布 SHA，并用于实际回滚与恢复路径验收。
+- 用户最终选择个人、非商业、零基础设施月费落地，Render 方案退出当前范围。新方案为
+  Sites 前端、常开 Mac API/Worker、本机 Redis、Tailscale Funnel、`launchd` 和
+  UptimeRobot；第 6.2 节及之前的验收证据保持有效。
+- Sites 项目已创建；Vite 前端新增 Sites Worker、SPA 深层路径回退和四个安全响应头。
+  Sites 构建与目标回归通过 2、失败 0，部署包结构验证通过。
+- 新增本机 API、评分/维护 Worker、导出 Worker、Tailscale userspace、防休眠和
+  watchdog 的 `launchd` 脚本；Tailscale CLI 已安装并启动登录流程，服务条款确认和账户
+  登录尚待用户完成。
+- 新方案本地门禁通过：后端 491 项、前端 70 项、Sites 专项 2 项、本地桌面/手机浏览器
+  2 项和部署契约目标回归 14 项通过，失败 0；Ruff、格式、严格 mypy、前端 lint、类型
+  检查、Sites 打包、仓库密钥扫描和差异检查通过。

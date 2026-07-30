@@ -49,29 +49,52 @@ def test_ci_is_a_strict_non_deploying_gate_chain() -> None:
     assert baseline["results"] == {}
 
 
-def test_render_blueprint_keeps_paid_resources_manual_and_minimal() -> None:
-    blueprint = (PROJECT_ROOT / "infra/render.yaml").read_text(encoding="utf-8")
-    api = blueprint.split("name: paper-grading-api", 1)[1].split("name: paper-grading-worker", 1)[0]
-    worker = blueprint.split("name: paper-grading-worker", 1)[1].split(
-        "name: paper-grading-export-worker", 1
-    )[0]
-    export_worker = blueprint.split("name: paper-grading-export-worker", 1)[1].split(
-        "name: paper-grading-queue", 1
-    )[0]
+def test_sites_and_local_deployment_keep_public_and_secret_boundaries_separate() -> None:
+    hosting = json.loads(
+        (PROJECT_ROOT / "frontend/.openai/hosting.json").read_text(encoding="utf-8")
+    )
+    sites_worker = (PROJECT_ROOT / "frontend/sites/worker.js").read_text(encoding="utf-8")
+    component_runner = (PROJECT_ROOT / "infra/local/run-component.sh").read_text(encoding="utf-8")
+    launch_installer = (PROJECT_ROOT / "infra/local/install-launch-agents.sh").read_text(
+        encoding="utf-8"
+    )
+    production_template = (PROJECT_ROOT / "infra/local/production.env.example").read_text(
+        encoding="utf-8"
+    )
 
-    assert blueprint.count("autoDeployTrigger: 'off'") == 4
-    assert "healthCheckPath: /health/ready" in api
-    assert "X-Content-Type-Options" in blueprint
-    assert "ipAllowList: []" in blueprint
-    assert "maxmemoryPolicy: noeviction" in blueprint
-    assert "SUPABASE_PUBLISHABLE_KEY" not in worker
-    assert "AUTH_INVITE_REDIRECT_URL" not in worker
-    assert "FRONTEND_ORIGIN" not in worker
-    assert "paper_grading_worker.<project-ref>" in worker
-    assert "PROVIDER_MASTER_KEY" not in export_worker
-    assert "EXPORT_DATABASE_URL" in export_worker
-    assert "127.0.0.1" not in blueprint
-    assert "/mock" not in blueprint
+    assert hosting["project_id"]
+    assert hosting["d1"] is None
+    assert hosting["r2"] is None
+    for header in (
+        "X-Content-Type-Options",
+        "X-Frame-Options",
+        "Referrer-Policy",
+        "Permissions-Policy",
+    ):
+        assert header in sites_worker
+    assert 'new URL("/index.html", request.url)' in sites_worker
+    assert "--host 127.0.0.1" in component_runner
+    assert "app.workers.supervisor" in component_runner
+    assert "--queues=paper_grading.exports" in component_runner
+    api_section = component_runner.split("  api)", 1)[1].split("  ;;", 1)[0]
+    grading_section = component_runner.split("  grading)", 1)[1].split("  ;;", 1)[0]
+    export_section = component_runner.split("  export)", 1)[1].split("  ;;", 1)[0]
+    assert "unset EXPORT_DATABASE_URL" in api_section
+    assert "unset EXPORT_DATABASE_URL" in grading_section
+    assert "unset AUTH_INVITE_REDIRECT_URL" in grading_section
+    assert "unset PROVIDER_MASTER_KEY" in export_section
+    assert "unset DATABASE_URL" in export_section
+    watchdog = (PROJECT_ROOT / "infra/local/watchdog.sh").read_text(encoding="utf-8")
+    assert "unset PROVIDER_MASTER_KEY" in watchdog
+    assert '"$PROJECT_ROOT/.venv/bin/celery" -b "$REDIS_URL"' in watchdog
+    assert "-A app.workers.celery_app:celery_app" not in watchdog
+    assert 'local label="com.paper-grading.$component"' in launch_installer
+    for component in ("api", "grading", "export"):
+        assert f"write_component_plist {component}" in launch_installer
+    for component in ("tailscale", "watchdog"):
+        assert f"write_single_program_plist {component}" in launch_installer
+    assert "redis://127.0.0.1:6379/0" in production_template
+    assert not (PROJECT_ROOT / "infra/render.yaml").exists()
 
 
 def test_browser_and_runbook_boundaries_are_explicit() -> None:
@@ -118,7 +141,7 @@ def test_browser_and_runbook_boundaries_are_explicit() -> None:
         encoding="utf-8"
     )
     rollback = (PROJECT_ROOT / "docs/runbooks/rollback.md").read_text(encoding="utf-8")
-    assert "Deploy a specific commit" in deployment
+    assert "Codex Sites" in deployment
     assert "STAGE14_RELEASE_SHA" in deployment
     assert "${STAGE14_API_BASE_URL/https:/http:}" in smoke
     assert "allowed-cors.headers" in smoke

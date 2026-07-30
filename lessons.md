@@ -1,5 +1,8 @@
 # Lessons
 
+- 用户明确选择个人、非商业、零基础设施月费落地后，不再把 Render 付款或资源创建列为
+  阶段 14 阻塞；前端改用 Sites，后端、Redis 和 Worker 改由常开 Mac 承载，部署环境
+  风险通过 Funnel、`launchd`、防休眠、外部告警和双版本回滚验收。
 - 阶段 11 终端 D 的辅助脚本若调用 `Settings.load()`，必须在同一命令块显式设置 `REDIS_URL`；终端 A 的环境变量不会自动传到终端 D。
 - 评分 item 的 `needs_review` 同时承载成功结果待确认和模型结果无效待人工处理；真实验收必须额外断言 `review_available=true` 且存在 succeeded attempt，不能只看待复核数量。
 - 当可信 Rubric 使用中文而反馈要求英文时，提示词必须明确要求翻译或释义 Rubric 名称与描述，不能只写“使用英文”；提示词语义变化必须升版本，并保留历史版本的精确哈希重建。

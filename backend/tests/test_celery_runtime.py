@@ -114,20 +114,12 @@ def test_worker_processes_isolate_grading_from_maintenance_execution_slots() -> 
     assert "--beat" in maintenance_command
 
 
-def test_render_worker_uses_the_isolated_worker_supervisor() -> None:
-    blueprint = (Path(__file__).parents[2] / "infra" / "render.yaml").read_text()
-    worker_service = blueprint.split("name: paper-grading-worker", 1)[1].split(
-        "name: paper-grading-export-worker", 1
-    )[0]
+def test_local_grading_worker_uses_the_isolated_worker_supervisor() -> None:
+    runner = (Path(__file__).parents[2] / "infra/local/run-component.sh").read_text()
+    grading = runner.split("  grading)", 1)[1].split("  ;;", 1)[0]
 
-    assert "startCommand: python -m app.workers.supervisor" in blueprint
-    assert "celery -A app.workers.celery_app:celery_app worker --beat" not in blueprint
-    assert "SUPABASE_PUBLISHABLE_KEY" not in worker_service
-    assert "SUPABASE_AUTH_TIMEOUT_SECONDS" not in worker_service
-    assert "AUTH_INVITE_REDIRECT_URL" not in worker_service
-    assert "FRONTEND_ORIGIN" not in worker_service
-    assert "healthCheckPath: /health/ready" in blueprint
-    assert blueprint.count("autoDeployTrigger: 'off'") == 4
+    assert "app.workers.supervisor" in grading
+    assert "--beat" not in grading
 
 
 def test_export_worker_has_its_own_queue_and_no_beat(monkeypatch: MonkeyPatch) -> None:
@@ -215,13 +207,10 @@ def test_export_worker_stops_regenerating_after_two_soft_timeouts(
     assert calls == [False, True]
 
 
-def test_render_export_worker_does_not_receive_provider_master_key() -> None:
-    blueprint = (Path(__file__).parents[2] / "infra" / "render.yaml").read_text()
-    export_service = blueprint.split("name: paper-grading-export-worker", 1)[1].split(
-        "databases:", 1
-    )[0]
+def test_local_export_worker_does_not_receive_provider_master_key() -> None:
+    runner = (Path(__file__).parents[2] / "infra/local/run-component.sh").read_text()
+    export = runner.split("  export)", 1)[1].split("  ;;", 1)[0]
 
-    assert "--queues=paper_grading.exports" in export_service
-    assert "PROVIDER_MASTER_KEY" not in export_service
-    assert "- key: EXPORT_DATABASE_URL" in export_service
-    assert "- key: DATABASE_URL" not in export_service
+    assert "--queues=paper_grading.exports" in export
+    assert "unset PROVIDER_MASTER_KEY" in export
+    assert "unset DATABASE_URL" in export

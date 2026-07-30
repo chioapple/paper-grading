@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:sites": "npm run build && node scripts/prepare-sites-build.mjs",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run && node --test scripts/dependency-audit.node-test.mjs",
+    "test:sites": "npm run build:sites && node --test scripts/sites-build.node-test.mjs",
     "test:watch": "vitest",
     "e2e:local": "playwright test --config playwright.config.ts",
     "e2e:real": "E2E_REAL=true playwright test --config playwright.real.config.ts",
