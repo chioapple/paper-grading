@@ -32,6 +32,9 @@ def test_ci_is_a_strict_non_deploying_gate_chain() -> None:
     assert "postgres:16" in workflow
     assert "alembic downgrade base" in workflow
     assert workflow.count("20260728_0019") >= 3
+    assert "grep -q '^20260726_0018 '" not in workflow
+    assert "grep -qx '20260726_0018'" in workflow
+    assert workflow.count("grep -Eq '^20260728_0019( \\(head\\))?$'") == 2
     migration_setup = workflow.split(
         "Prepare Supabase-owned schemas in the disposable database", 1
     )[1].split("Replay empty database to 0018, 0019, base, and 0019", 1)[0]

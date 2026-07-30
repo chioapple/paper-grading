@@ -219,3 +219,4 @@
 - 阶段 13 已按用户决定完成“备份和自动清理保持关闭”的验收。阶段 14 只验证部署环境没有误启用这些能力，真实恢复不再作为本阶段完成条件；未来启用时必须单独授权和验收，当前不得宣称已有应用级独立恢复能力。
 - 回滚验收不是停在旧 SHA。必须先回到已验证兼容 `0019` 的 SHA并完成健康检查，再恢复本轮发布候选；否则验收会把生产环境留在非目标版本。
 - GitHub Actions 的普通 PostgreSQL 镜像不包含 Supabase 平台角色。只创建 `auth`、`storage` schema 和占位表不足以回放含 `GRANT/REVOKE ... TO anon/authenticated/service_role` 的迁移；一次性数据库必须在运行 Alembic 前显式创建这三个角色。该修复只补齐 CI 的 Supabase 外部前置，不修改任何已发布迁移。
+- `alembic current` 在非 head revision 只输出 revision ID，在 head 可能追加 `(head)`。用“revision 后必须有空格”匹配中间版本会在升级成功后假红；中间版本应整行精确匹配，最终版本只允许可选的 `(head)` 标记。

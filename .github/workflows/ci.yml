@@ -172,12 +172,12 @@ jobs:
           MIGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/paper_grading_ci # pragma: allowlist secret
         run: |
           alembic upgrade 20260726_0018
-          alembic current | grep -q '^20260726_0018 '
+          alembic current | grep -qx '20260726_0018'
           alembic upgrade 20260728_0019
-          alembic current | grep -q '^20260728_0019 '
+          alembic current | grep -Eq '^20260728_0019( \(head\))?$'
           alembic downgrade base
           alembic upgrade 20260728_0019
-          alembic current | grep -q '^20260728_0019 '
+          alembic current | grep -Eq '^20260728_0019( \(head\))?$'
         working-directory: backend
       - run: pytest -q tests/test_migrations.py
         working-directory: backend
