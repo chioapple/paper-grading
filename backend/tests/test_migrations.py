@@ -38,6 +38,14 @@ STAGE_SIX_REVISION = "20260716_0008"
 STAGE_SEVEN_REVISION = "20260716_0009"
 STAGE_EIGHT_REVISION = "20260716_0010"
 STAGE_NINE_REVISION = "20260716_0011"
+STAGE_TEN_PIPELINE_REVISION = "20260716_0012"
+STAGE_TEN_PERMISSION_REVISION = "20260718_0013"
+STAGE_TEN_REVISION = "20260718_0014"
+STAGE_ELEVEN_SCHEMA_REVISION = "20260719_0015"
+STAGE_ELEVEN_REVISION = "20260721_0016"
+STAGE_TWELVE_REVISION = "20260722_0017"
+STAGE_THIRTEEN_REVISION = "20260726_0018"
+STAGE_FOURTEEN_REVISION = "20260728_0019"
 STAGE_FOUR_TEACHER_ROLE = "paper_grading_teacher_api"
 STAGE_FOUR_POLICY_COMMANDS = {
     "assignments": ("SELECT", "INSERT", "UPDATE"),
@@ -58,10 +66,10 @@ def build_alembic_config() -> Config:
     return Config(str(BACKEND_ROOT / "alembic.ini"))
 
 
-def test_migration_history_has_one_stage_eight_head() -> None:
+def test_migration_history_has_one_stage_fourteen_head() -> None:
     scripts = ScriptDirectory.from_config(build_alembic_config())
 
-    assert scripts.get_heads() == [STAGE_NINE_REVISION]
+    assert scripts.get_heads() == [STAGE_FOURTEEN_REVISION]
 
 
 def test_offline_upgrade_compiles_every_domain_table(
@@ -80,6 +88,8 @@ def test_offline_upgrade_compiles_every_domain_table(
     for table_name in EXPECTED_TABLES:
         assert f"CREATE TABLE {table_name}" in sql
         assert f"ALTER TABLE public.{table_name} ENABLE ROW LEVEL SECURITY" in sql
+    assert "CREATE TABLE export_items" in sql
+    assert "ALTER TABLE public.export_items ENABLE ROW LEVEL SECURITY" in sql
     for trigger_name in {
         "profiles_set_updated_at",
         "provider_configs_set_updated_at",
@@ -584,3 +594,389 @@ def test_stage_nine_provider_call_snapshots_can_be_rolled_back(
     assert "DROP COLUMN provider_config_version" in sql
     assert "CREATE OR REPLACE FUNCTION public.paper_grading_protect_job_snapshot" in sql
     assert "NEW.result_schema_version" in sql
+
+
+def test_stage_ten_batch_pipeline_contract_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_NINE_REVISION}:{STAGE_TEN_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "stage ten requires empty grading job tables" in sql
+    assert "ADD COLUMN model_profiles JSONB DEFAULT '{}'::jsonb NOT NULL" in sql
+    assert "ADD COLUMN expected_item_count INTEGER NOT NULL" in sql
+    assert "ADD COLUMN state_version BIGINT DEFAULT '1' NOT NULL" in sql
+    assert "ADD COLUMN dispatch_version INTEGER DEFAULT '1' NOT NULL" in sql
+    assert "ADD COLUMN attempt_kind TEXT NOT NULL" in sql
+    assert "CREATE UNIQUE INDEX grading_attempts_one_running_idx" in sql
+    assert "CREATE UNIQUE INDEX grading_attempts_raw_response_object_key_idx" in sql
+    assert "CREATE INDEX grading_job_items_dispatch_idx" in sql
+    assert "CREATE OR REPLACE FUNCTION public.paper_grading_protect_job_snapshot" in sql
+    assert "CREATE OR REPLACE FUNCTION public.paper_grading_protect_attempt_history" in sql
+    assert "CREATE FUNCTION public.paper_grading_require_ready_job_item" in sql
+    assert "CREATE FUNCTION public.paper_grading_protect_job_item" in sql
+    assert "(OLD.status = NEW.status) OR" in sql
+    assert "job.status IN ('queued', 'running', 'paused')" in sql
+    assert "provider.config_version = current_job.provider_config_version" in sql
+    assert "CREATE ROLE paper_grading_worker NOLOGIN NOBYPASSRLS" in sql
+    assert "REVOKE EXECUTE" in sql
+    assert "SET search_path = ''" in sql
+
+
+def test_stage_ten_batch_pipeline_contract_can_be_rolled_back(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.downgrade(
+        build_alembic_config(),
+        f"{STAGE_TEN_REVISION}:{STAGE_NINE_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "DROP ROLE IF EXISTS paper_grading_worker" in sql
+    assert "DROP INDEX grading_attempts_one_running_idx" in sql
+    assert "DROP COLUMN model_profiles" in sql
+    assert "CREATE OR REPLACE FUNCTION public.paper_grading_protect_job_snapshot" in sql
+
+
+def test_stage_ten_teacher_batch_permission_repair_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_TEN_PIPELINE_REVISION}:{STAGE_TEN_PERMISSION_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "CREATE OR REPLACE FUNCTION public.paper_grading_require_ready_job_item()" in sql
+    assert "SECURITY INVOKER" in sql
+    assert "target_job_status" in sql
+    assert "target_submission_status" in sql
+    assert "FOR UPDATE" not in sql
+    assert "FOR SHARE" not in sql
+    assert "GRANT UPDATE" not in sql
+
+
+def test_stage_ten_deferred_item_count_repair_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_TEN_PERMISSION_REVISION}:{STAGE_TEN_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "CREATE OR REPLACE FUNCTION public.paper_grading_validate_job_item_count()" in sql
+    assert "IF TG_TABLE_NAME = 'grading_jobs' THEN" in sql
+    assert "ELSIF TG_TABLE_NAME = 'grading_job_items' THEN" in sql
+    assert "ELSE NEW.grading_job_id" not in sql
+
+
+def test_stage_eleven_review_confirmation_contract_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_TEN_REVISION}:{STAGE_ELEVEN_SCHEMA_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "ADD COLUMN deduction_results JSONB" in sql
+    assert "ADD COLUMN subtotal NUMERIC(10, 4)" in sql
+    assert "ADD COLUMN deduction_total NUMERIC(10, 4)" in sql
+    assert "CREATE FUNCTION paper_grading_private.save_teacher_review_draft" in sql
+    assert "CREATE FUNCTION paper_grading_private.confirm_teacher_reviews" in sql
+    assert sql.count("SECURITY DEFINER") >= 2
+    assert sql.count("SET search_path = ''") >= 2
+    assert "REVOKE INSERT, UPDATE ON TABLE public.teacher_reviews" in sql
+    assert "GRANT EXECUTE ON FUNCTION paper_grading_private.save_teacher_review_draft" in sql
+    assert "GRANT EXECUTE ON FUNCTION paper_grading_private.confirm_teacher_reviews" in sql
+    assert "revision_number = current_review.revision_number + 1" in sql
+    assert "TO paper_grading_teacher_api" in sql
+    assert "INSERT INTO public.audit_logs" in sql
+    assert "status = 'completed'" in sql
+    assert "finished_at = transaction_timestamp()" in sql
+    assert "status IN ('needs_review', 'failed')" in sql
+    assert "status IN ('needs_review', 'completed', 'failed')" not in sql
+    assert "current_job.status IN ('queued', 'running', 'paused')" in sql
+
+
+def test_stage_eleven_review_confirmation_contract_can_be_rolled_back(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.downgrade(
+        build_alembic_config(),
+        f"{STAGE_ELEVEN_SCHEMA_REVISION}:{STAGE_TEN_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "DROP FUNCTION paper_grading_private.confirm_teacher_reviews" in sql
+    assert "DROP FUNCTION paper_grading_private.save_teacher_review_draft" in sql
+    assert "DROP COLUMN deduction_total" in sql
+    assert "DROP COLUMN subtotal" in sql
+    assert "DROP COLUMN deduction_results" in sql
+    assert "GRANT SELECT, INSERT, UPDATE ON TABLE public.teacher_reviews" in sql
+
+
+def test_stage_eleven_partial_confirmation_repair_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_ELEVEN_SCHEMA_REVISION}:{STAGE_ELEVEN_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "CREATE FUNCTION public.paper_grading_preserve_active_job_status" in sql
+    assert "CREATE TRIGGER grading_jobs_preserve_active_status" in sql
+    assert "item.status IN ('queued', 'running')" in sql
+    assert "IF OLD.status = 'paused'" in sql
+    assert "NEW.status := 'running'" in sql
+    assert "job.status = 'needs_review'" in sql
+    assert "EXISTS (" in sql
+
+
+def test_stage_eleven_partial_confirmation_repair_can_be_rolled_back(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.downgrade(
+        build_alembic_config(),
+        f"{STAGE_ELEVEN_REVISION}:{STAGE_ELEVEN_SCHEMA_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "DROP TRIGGER grading_jobs_preserve_active_status" in sql
+    assert "DROP FUNCTION public.paper_grading_preserve_active_job_status" in sql
+
+
+def test_stage_twelve_export_snapshot_and_worker_contract_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_ELEVEN_REVISION}:{STAGE_TWELVE_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "CREATE TABLE export_items" in sql
+    assert "CREATE ROLE paper_grading_export_worker LOGIN NOINHERIT NOBYPASSRLS" in sql
+    assert "REVOKE INSERT ON TABLE public.exports FROM paper_grading_teacher_api" in sql
+    assert "DROP POLICY exports_teacher_insert ON public.exports" in sql
+    for signature in (
+        "paper_grading_private.create_export(uuid, text, text, bytea)",
+        "paper_grading_private.claim_export(uuid, uuid, integer)",
+        "paper_grading_private.complete_export(uuid, uuid, text, text, bigint, bytea)",
+        "paper_grading_private.fail_export(uuid, uuid, text)",
+    ):
+        assert f"REVOKE EXECUTE ON FUNCTION {signature} FROM PUBLIC" in sql
+    assert (
+        "GRANT EXECUTE ON FUNCTION paper_grading_private.create_export"
+        "(uuid, text, text, bytea) TO paper_grading_teacher_api"
+    ) in sql
+    assert "export_final_unconfirmed" in sql
+    assert "attempt.scoring_round = item.dispatch_version" in sql
+    assert "ORDER BY position" in sql
+    assert "source_value := 'teacher_confirmed'" in sql
+    assert "source_value := 'teacher_draft'" in sql
+    assert "source_value := 'ai_suggestion'" in sql
+    assert "lease_expires_at <= transaction_timestamp()" in sql
+    assert "lease_expires_at > transaction_timestamp()" in sql
+    assert "prior_claim_count >= 3" in sql
+    assert "export_worker_lost" in sql
+    assert "SET search_path = ''" in sql
+
+
+def test_stage_twelve_export_schema_can_be_rolled_back(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.downgrade(
+        build_alembic_config(),
+        f"{STAGE_TWELVE_REVISION}:{STAGE_ELEVEN_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "cannot remove stage twelve while export history exists" in sql
+    assert "DROP TABLE public.export_items" in sql
+    assert "DROP ROLE IF EXISTS paper_grading_export_worker" in sql
+    assert "CREATE POLICY exports_teacher_insert ON public.exports" in sql
+    assert "GRANT INSERT ON TABLE public.exports TO paper_grading_teacher_api" in sql
+    assert "ADD CONSTRAINT exports_audit_metadata_check" in sql
+
+
+def test_stage_thirteen_quota_retention_and_backup_contract_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_TWELVE_REVISION}:{STAGE_THIRTEEN_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    for table_name in (
+        "quota_resource_states",
+        "quota_reservations",
+        "quota_alerts",
+        "retention_objects",
+        "backup_runs",
+        "backup_restore_runs",
+    ):
+        assert f"CREATE TABLE {table_name}" in sql
+    for function_name in (
+        "check_database_growth",
+        "reserve_storage_growth",
+        "finalize_storage_growth",
+        "list_retention_candidates",
+        "claim_next_retention_object",
+        "revalidate_retention_object",
+        "complete_retention_object",
+        "fail_retention_object",
+    ):
+        assert f"CREATE FUNCTION paper_grading_private.{function_name}" in sql
+    assert "paper_grading_retention_worker" in sql
+    assert "paper_grading_backup_worker" in sql
+    assert "SET search_path = ''" in sql
+    assert "('database', false), ('storage', false)" in sql
+    assert "storage.objects" in sql
+    assert "pg_database_size" in sql
+    assert "IF current_used IS NULL THEN" in sql
+    assert "database_usage_unavailable" in sql
+    for invalid_expression in (
+        "pg_catalog.coalesce(",
+        "pg_catalog.greatest(",
+        "pg_catalog.least(",
+    ):
+        assert invalid_expression not in sql
+    assert "s.source_object_key = current_object.object_key" in sql
+    assert "s.extracted_object_key = current_object.object_key" in sql
+    assert "a.raw_response_object_key = current_object.object_key" in sql
+
+
+def test_stage_fourteen_grading_worker_login_is_minimal(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL",
+        "postgresql+asyncpg://localhost:5432/paper_grading_test",
+    )
+    command.upgrade(
+        build_alembic_config(),
+        f"{STAGE_THIRTEEN_REVISION}:{STAGE_FOURTEEN_REVISION}",
+        sql=True,
+    )
+
+    sql = capsys.readouterr().out
+    assert "ALTER ROLE paper_grading_worker LOGIN NOINHERIT NOBYPASSRLS" in sql
+    assert "GRANT USAGE ON SCHEMA paper_grading_private TO paper_grading_worker" in sql
+    assert (
+        "GRANT EXECUTE ON FUNCTION "
+        "paper_grading_private.reserve_storage_growth(text, text, bytea, bigint) "
+        "TO paper_grading_worker"
+    ) in sql
+    assert (
+        "GRANT EXECUTE ON FUNCTION "
+        "paper_grading_private.finalize_storage_growth(uuid, text) "
+        "TO paper_grading_worker"
+    ) in sql
+    assert "PASSWORD" not in sql

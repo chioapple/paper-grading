@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link, useOutletContext, useParams } from "react-router-dom";
+import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 
 import type { AppOutletContext } from "../../app/AppShell";
 import { Icon } from "../../app/icons";
@@ -45,6 +45,7 @@ const submissionsCopy = {
     emptySelection: "请选择要上传的论文。",
     emptySaved: "还没有已保存的论文。",
     loadFailed: "暂时无法加载论文列表。",
+    assignmentLoading: "正在加载作业…",
     assignmentFailed: "暂时无法加载作业。",
     notReady: "当前作业尚未确认评分标准，不能上传论文。",
     archived: "当前作业已归档，不能上传论文。",
@@ -58,6 +59,21 @@ const submissionsCopy = {
     failed: "上传失败",
     uploaded: "等待解析",
     parsing: "解析中",
+    selectForGrading: "选择",
+    selectAllForGrading: "选择全部可批改论文",
+    selectPaper: "选择",
+    createGradingJob: "创建批改任务",
+    creatingGradingJob: "正在创建…",
+    gradingSelectionRequired: "请至少选择一篇已解析论文。",
+    gradingLimit: "每个批改任务最多选择 100 篇论文。",
+    gradingCostNotice: "请先勾选已解析论文，再创建批改任务。创建后会立即调用已配置模型并产生相应费用。",
+    gradingAssignmentInvalid: "作业或评分标准状态已变化，请刷新后重试。",
+    gradingSubmissionsInvalid: "所选论文中有尚未解析完成或已失效的论文，请刷新后重选。",
+    gradingProviderInvalid: "当前模型配置不可用于批改，请联系管理员检查后重试。",
+    gradingIdempotencyConflict: "本次创建请求与上次不一致，请重新选择论文。",
+    gradingQuotaExceeded: "系统容量已达到安全上限，暂时不能创建新的评分批次。",
+    quotaUnavailable: "系统暂时无法确认剩余容量，请稍后重试。",
+    gradingFailed: "批改任务创建失败，请保留当前选择后重试。",
   },
   en: {
     title: "Upload papers",
@@ -79,6 +95,7 @@ const submissionsCopy = {
     emptySelection: "Select papers to upload.",
     emptySaved: "No papers have been saved yet.",
     loadFailed: "Papers could not be loaded.",
+    assignmentLoading: "Loading assignment…",
     assignmentFailed: "The assignment could not be loaded.",
     notReady: "Confirm the rubric before uploading papers.",
     archived: "This assignment is archived and cannot accept uploads.",
@@ -92,8 +109,44 @@ const submissionsCopy = {
     failed: "Upload failed",
     uploaded: "Waiting to parse",
     parsing: "Parsing",
+    selectForGrading: "Select",
+    selectAllForGrading: "Select all gradable papers",
+    selectPaper: "Select",
+    createGradingJob: "Create grading job",
+    creatingGradingJob: "Creating…",
+    gradingSelectionRequired: "Select at least one parsed paper.",
+    gradingLimit: "A grading job can contain at most 100 papers.",
+    gradingCostNotice: "Select parsed papers before creating a grading job. Creating it immediately calls the configured model and incurs its usage cost.",
+    gradingAssignmentInvalid: "The assignment or rubric changed. Refresh and try again.",
+    gradingSubmissionsInvalid: "A selected paper is no longer ready. Refresh and select again.",
+    gradingProviderInvalid: "The current model configuration cannot grade. Ask an administrator to check it, then retry.",
+    gradingIdempotencyConflict: "This request no longer matches the previous attempt. Select the papers again.",
+    gradingQuotaExceeded: "System capacity has reached its safety limit. New grading jobs are temporarily blocked.",
+    quotaUnavailable: "Remaining capacity cannot be verified right now. Try again later.",
+    gradingFailed: "The grading job could not be created. Your selection is preserved for retry.",
   },
 } as const;
+
+const GRADING_ERROR_COPY: Record<"zh" | "en", Record<string, keyof typeof submissionsCopy.zh>> = {
+  zh: {
+    grading_job_assignment_invalid: "gradingAssignmentInvalid",
+    grading_job_configuration_invalid: "gradingAssignmentInvalid",
+    grading_job_submissions_invalid: "gradingSubmissionsInvalid",
+    grading_job_provider_invalid: "gradingProviderInvalid",
+    grading_job_idempotency_conflict: "gradingIdempotencyConflict",
+    database_quota_exceeded: "gradingQuotaExceeded",
+    database_usage_unavailable: "quotaUnavailable",
+  },
+  en: {
+    grading_job_assignment_invalid: "gradingAssignmentInvalid",
+    grading_job_configuration_invalid: "gradingAssignmentInvalid",
+    grading_job_submissions_invalid: "gradingSubmissionsInvalid",
+    grading_job_provider_invalid: "gradingProviderInvalid",
+    grading_job_idempotency_conflict: "gradingIdempotencyConflict",
+    database_quota_exceeded: "gradingQuotaExceeded",
+    database_usage_unavailable: "quotaUnavailable",
+  },
+};
 
 const FILE_ERROR_COPY: Record<"zh" | "en", Record<SubmissionFileErrorCode, string>> = {
   zh: {
@@ -132,6 +185,8 @@ const SERVER_ERROR_COPY: Record<"zh" | "en", Record<string, string>> = {
     storage_source_failed: "原文件存储失败。",
     storage_extracted_failed: "解析结果存储失败。",
     object_storage_unavailable: "对象存储暂时不可用。",
+    storage_quota_exceeded: "文件存储容量已达到安全上限，暂时不能继续上传。",
+    storage_usage_unavailable: "系统暂时无法确认剩余容量，请稍后重试。",
   },
   en: {
     document_encrypted: "Encrypted files cannot be parsed.",
@@ -156,6 +211,8 @@ const SERVER_ERROR_COPY: Record<"zh" | "en", Record<string, string>> = {
     storage_source_failed: "The original file could not be stored.",
     storage_extracted_failed: "The extracted result could not be stored.",
     object_storage_unavailable: "Object storage is temporarily unavailable.",
+    storage_quota_exceeded: "Storage has reached its safety limit. Uploads are temporarily blocked.",
+    storage_usage_unavailable: "Remaining capacity cannot be verified right now. Try again later.",
   },
 };
 
@@ -202,15 +259,29 @@ function SavedSubmissionRow({
   language,
   downloading,
   onDownload,
+  selectedForGrading,
+  onToggleGrading,
 }: {
   submission: SubmissionView;
   language: "zh" | "en";
   downloading: boolean;
   onDownload: (submission: SubmissionView) => void;
+  selectedForGrading: boolean;
+  onToggleGrading: (submission: SubmissionView) => void;
 }) {
   const copy = submissionsCopy[language];
   return (
     <tr>
+      <td data-label={copy.selectForGrading}>
+        {submission.status === "ready" ? (
+          <input
+            aria-label={`${copy.selectPaper} ${submission.original_filename}`}
+            checked={selectedForGrading}
+            onChange={() => onToggleGrading(submission)}
+            type="checkbox"
+          />
+        ) : "—"}
+      </td>
       <td data-label={copy.filename}><strong>{submission.original_filename}</strong></td>
       <td data-label={copy.size}>{formatBytes(submission.file_size_bytes, language)}</td>
       <td data-label={copy.status}>
@@ -239,6 +310,7 @@ export function SubmissionsPage() {
   const { assignmentId = "" } = useParams();
   const { session } = useAuth();
   const api = useAppApi();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const copy = submissionsCopy[language];
   const [rows, setRows] = useState<UploadRow[]>([]);
@@ -246,6 +318,9 @@ export function SubmissionsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState("");
   const [downloadError, setDownloadError] = useState("");
+  const [gradingSelection, setGradingSelection] = useState<Set<string>>(() => new Set());
+  const [gradingRequestKey, setGradingRequestKey] = useState("");
+  const [gradingError, setGradingError] = useState("");
 
   const assignmentQuery = useQuery({
     queryKey: ["assignment", assignmentId],
@@ -273,6 +348,42 @@ export function SubmissionsPage() {
   );
   const assignment = assignmentQuery.data;
   const canUpload = assignment?.status === "ready";
+  const savedSubmissions = submissionsQuery.data ?? [];
+  const readySubmissions = savedSubmissions.filter((submission) => submission.status === "ready");
+  const selectedSubmissionIds = readySubmissions
+    .filter((submission) => gradingSelection.has(submission.id))
+    .map((submission) => submission.id);
+  const allReadySelected = readySubmissions.length > 0
+    && selectedSubmissionIds.length === readySubmissions.length;
+
+  const gradingMutation = useMutation({
+    mutationFn: async ({ submissionIds, idempotencyKey }: { submissionIds: string[]; idempotencyKey: string }) => {
+      if (!session) {
+        throw new Error("登录会话不存在");
+      }
+      return api.createGradingJob(
+        session,
+        assignmentId,
+        submissionIds,
+        idempotencyKey,
+      );
+    },
+    onSuccess: async () => {
+      setGradingError("");
+      await queryClient.invalidateQueries({ queryKey: ["review-jobs"] });
+      navigate("/grading-jobs");
+    },
+    onError: (error) => {
+      if (error instanceof ApiRequestError && error.code) {
+        const copyKey = GRADING_ERROR_COPY[language][error.code];
+        if (copyKey) {
+          setGradingError(copy[copyKey]);
+          return;
+        }
+      }
+      setGradingError(copy.gradingFailed);
+    },
+  });
 
   function selectFiles(files: File[]) {
     const selection = validateSubmissionSelection(files);
@@ -284,6 +395,41 @@ export function SubmissionsPage() {
     setRows((current) => current.map((row) => (
       row.position === position ? { ...row, ...update } : row
     )));
+  }
+
+  function replaceGradingSelection(next: Set<string>) {
+    setGradingSelection(next);
+    setGradingRequestKey("");
+    setGradingError("");
+  }
+
+  function toggleGradingSubmission(submission: SubmissionView) {
+    const next = new Set(gradingSelection);
+    if (next.has(submission.id)) {
+      next.delete(submission.id);
+    } else {
+      if (next.size >= 100) {
+        setGradingError(copy.gradingLimit);
+        return;
+      }
+      next.add(submission.id);
+    }
+    replaceGradingSelection(next);
+  }
+
+  function createGradingJob() {
+    if (selectedSubmissionIds.length === 0 || gradingMutation.isPending) {
+      setGradingError(copy.gradingSelectionRequired);
+      return;
+    }
+    const idempotencyKey = gradingRequestKey || `grading-job-${globalThis.crypto.randomUUID()}`;
+    if (!gradingRequestKey) {
+      setGradingRequestKey(idempotencyKey);
+    }
+    gradingMutation.mutate({
+      submissionIds: selectedSubmissionIds,
+      idempotencyKey,
+    });
   }
 
   async function uploadSelected() {
@@ -341,7 +487,7 @@ export function SubmissionsPage() {
   }
 
   if (assignmentQuery.isPending) {
-    return <div className="page stage6-page"><p className="table-empty">{copy.assignmentFailed}</p></div>;
+    return <div className="page stage6-page"><p className="table-empty" role="status">{copy.assignmentLoading}</p></div>;
   }
   if (assignmentQuery.isError || !assignment) {
     return <div className="page stage6-page"><p className="form-message form-message--error" role="alert">{copy.assignmentFailed}</p></div>;
@@ -407,17 +553,56 @@ export function SubmissionsPage() {
       ) : null}
 
       <section className="submission-saved" aria-labelledby="submission-saved-title">
-        <div className="submission-section-heading"><h2 id="submission-saved-title">{copy.savedFiles}</h2></div>
+        <div className="submission-section-heading">
+          <div>
+            <h2 id="submission-saved-title">{copy.savedFiles}</h2>
+            {readySubmissions.length > 0 ? <p>{copy.gradingCostNotice}</p> : null}
+          </div>
+          <button
+            className="primary-button"
+            disabled={selectedSubmissionIds.length === 0 || gradingMutation.isPending}
+            onClick={createGradingJob}
+            type="button"
+          >
+            {gradingMutation.isPending ? copy.creatingGradingJob : copy.createGradingJob}
+          </button>
+        </div>
         {submissionsQuery.isPending ? <p className="table-empty">{copy.emptySaved}</p> : null}
         {submissionsQuery.isError ? <p className="form-message form-message--error" role="alert">{copy.loadFailed}</p> : null}
         {downloadError ? <p className="form-message form-message--error" role="alert">{downloadError}</p> : null}
+        {gradingError ? <p className="form-message form-message--error" role="alert">{gradingError}</p> : null}
         {!submissionsQuery.isPending && !submissionsQuery.isError && submissionsQuery.data?.length === 0 ? <p className="table-empty">{copy.emptySaved}</p> : null}
         {submissionsQuery.data && submissionsQuery.data.length > 0 ? (
           <div className="account-table-wrap stage6-table-wrap">
             <table className="account-table stage6-table">
-              <thead><tr><th>{copy.filename}</th><th>{copy.size}</th><th>{copy.status}</th><th>{copy.created}</th><th>{copy.action}</th></tr></thead>
+              <thead><tr>
+                <th>
+                  <input
+                    aria-label={copy.selectAllForGrading}
+                    checked={allReadySelected}
+                    disabled={readySubmissions.length === 0 || readySubmissions.length > 100}
+                    onChange={() => {
+                      replaceGradingSelection(
+                        allReadySelected
+                          ? new Set()
+                          : new Set(readySubmissions.map((submission) => submission.id)),
+                      );
+                    }}
+                    type="checkbox"
+                  />
+                </th>
+                <th>{copy.filename}</th><th>{copy.size}</th><th>{copy.status}</th><th>{copy.created}</th><th>{copy.action}</th>
+              </tr></thead>
               <tbody>{submissionsQuery.data.map((submission) => (
-                <SavedSubmissionRow downloading={downloadingId === submission.id} key={submission.id} language={language} onDownload={(item) => void downloadSubmission(item)} submission={submission} />
+                <SavedSubmissionRow
+                  downloading={downloadingId === submission.id}
+                  key={submission.id}
+                  language={language}
+                  onDownload={(item) => void downloadSubmission(item)}
+                  onToggleGrading={toggleGradingSubmission}
+                  selectedForGrading={gradingSelection.has(submission.id)}
+                  submission={submission}
+                />
               ))}</tbody>
             </table>
           </div>

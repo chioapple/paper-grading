@@ -22,6 +22,7 @@ const assignmentsCopy = {
     emptyTitle: "还没有作业",
     emptyBody: "创建第一个作业，开始设置题目与评分标准。",
     continue: "继续设置",
+    edit: "编辑作业",
     view: "查看评分标准",
     upload: "上传论文",
     restore: "恢复",
@@ -46,6 +47,7 @@ const assignmentsCopy = {
     emptyTitle: "No assignments yet",
     emptyBody: "Create your first assignment and set its rubric.",
     continue: "Continue setup",
+    edit: "Edit assignment",
     view: "View rubric",
     upload: "Upload papers",
     restore: "Restore",
@@ -96,11 +98,11 @@ export function AssignmentsPage() {
   });
   const assignments = assignmentsQuery.data ?? [];
   const statusMutation = useMutation({
-    mutationFn: async ({ assignmentId, status }: { assignmentId: string; status: "draft" | "archived" }) => {
+    mutationFn: async ({ assignmentId, action }: { assignmentId: string; action: "archive" | "restore" }) => {
       if (!session) {
         throw new Error("登录会话不存在");
       }
-      return api.updateAssignmentStatus(session, assignmentId, status);
+      return api.updateAssignmentStatus(session, assignmentId, action);
     },
     onSuccess: async () => {
       setError("");
@@ -163,7 +165,7 @@ export function AssignmentsPage() {
                   <td data-label={copy.action}>
                     <div className="stage6-row-actions">
                       {assignment.status === "archived" ? (
-                        <button aria-label={`${copy.restore} ${assignment.title}`} className="stage6-row-link" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate({ assignmentId: assignment.id, status: "draft" })} type="button">{copy.restore}</button>
+                        <button aria-label={`${copy.restore} ${assignment.title}`} className="stage6-row-link" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate({ assignmentId: assignment.id, action: "restore" })} type="button">{copy.restore}</button>
                       ) : (
                         <>
                           {assignment.status === "ready" ? (
@@ -171,10 +173,15 @@ export function AssignmentsPage() {
                               {copy.upload}
                             </Link>
                           ) : null}
+                          {assignment.status === "draft" ? (
+                            <Link className="stage6-row-link" to={`/assignments/${assignment.id}/edit`}>
+                              {copy.edit}
+                            </Link>
+                          ) : null}
                           <Link className="stage6-row-link" to={`/assignments/${assignment.id}/rubric`}>
                             {assignmentAction(assignment, language)}
                           </Link>
-                          <button aria-label={`${copy.archive} ${assignment.title}`} className="stage6-row-link stage6-row-link--muted" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate({ assignmentId: assignment.id, status: "archived" })} type="button">{copy.archive}</button>
+                          <button aria-label={`${copy.archive} ${assignment.title}`} className="stage6-row-link stage6-row-link--muted" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate({ assignmentId: assignment.id, action: "archive" })} type="button">{copy.archive}</button>
                         </>
                       )}
                     </div>

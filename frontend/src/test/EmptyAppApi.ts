@@ -2,9 +2,20 @@ import type {
   AppApi,
   AssignmentCreateInput,
   AssignmentDetail,
+  AssignmentUpdateInput,
+  ExportDownload,
+  ExportType,
+  ExportView,
+  GradingJobCreated,
   ProviderConfig,
   ProviderConfigInput,
   ProviderTestResult,
+  ReviewConfirmationRef,
+  ReviewConfirmationResult,
+  ReviewDetail,
+  ReviewDraft,
+  ReviewDraftInput,
+  ReviewJobSummary,
   RubricDraftInput,
   RubricView,
   SubmissionDownload,
@@ -15,6 +26,117 @@ import type {
 import type { BrowserSession } from "../features/auth/AuthContext";
 
 export class EmptyAppApi implements AppApi {
+  async listExports(_session: BrowserSession): Promise<ExportView[]> {
+    void _session;
+    return [];
+  }
+
+  async createExport(
+    _session: BrowserSession,
+    _gradingJobId: string,
+    _exportType: ExportType,
+    _idempotencyKey: string,
+  ): Promise<ExportView> {
+    void _session;
+    void _gradingJobId;
+    void _exportType;
+    void _idempotencyKey;
+    throw new Error("本测试不使用成绩导出");
+  }
+
+  async getExport(
+    _session: BrowserSession,
+    _exportId: string,
+  ): Promise<ExportView> {
+    void _session;
+    void _exportId;
+    throw new Error("本测试不使用成绩导出详情");
+  }
+
+  async createExportDownload(
+    _session: BrowserSession,
+    _exportId: string,
+  ): Promise<ExportDownload> {
+    void _session;
+    void _exportId;
+    throw new Error("本测试不使用成绩导出下载");
+  }
+
+  async listReviewJobs(_session: BrowserSession): Promise<ReviewJobSummary[]> {
+    void _session;
+    return [];
+  }
+
+  async getReview(
+    _session: BrowserSession,
+    _jobId: string,
+    _itemId: string,
+  ): Promise<ReviewDetail> {
+    void _session;
+    void _jobId;
+    void _itemId;
+    throw new Error("本测试不使用教师复核");
+  }
+
+  async saveReviewDraft(
+    _session: BrowserSession,
+    _jobId: string,
+    _itemId: string,
+    _input: ReviewDraftInput,
+  ): Promise<ReviewDraft> {
+    void _session;
+    void _jobId;
+    void _itemId;
+    void _input;
+    throw new Error("本测试不使用教师复核");
+  }
+
+  async confirmReview(
+    _session: BrowserSession,
+    _jobId: string,
+    _itemId: string,
+    _input: ReviewDraftInput,
+  ): Promise<ReviewConfirmationResult> {
+    void _session;
+    void _jobId;
+    void _itemId;
+    void _input;
+    throw new Error("本测试不使用教师复核");
+  }
+
+  async confirmReviewBatch(
+    _session: BrowserSession,
+    _jobId: string,
+    _reviews: ReviewConfirmationRef[],
+  ): Promise<ReviewConfirmationResult> {
+    void _session;
+    void _jobId;
+    void _reviews;
+    throw new Error("本测试不使用教师复核");
+  }
+
+  async regradeReview(
+    _session: BrowserSession,
+    _jobId: string,
+    _itemId: string,
+  ) {
+    void _session;
+    void _jobId;
+    void _itemId;
+    throw new Error("本测试不使用教师复核");
+  }
+
+  async retryGradingItem(
+    _session: BrowserSession,
+    _jobId: string,
+    _itemId: string,
+  ) {
+    void _session;
+    void _jobId;
+    void _itemId;
+    throw new Error("本测试不使用失败任务重试");
+  }
+
   async listAssignments(_session: BrowserSession) {
     void _session;
     return [];
@@ -36,6 +158,17 @@ export class EmptyAppApi implements AppApi {
     void _session;
     void _assignmentId;
     throw new Error("本测试不使用作业详情");
+  }
+
+  async updateAssignment(
+    _session: BrowserSession,
+    _assignmentId: string,
+    _input: AssignmentUpdateInput,
+  ): Promise<AssignmentDetail> {
+    void _session;
+    void _assignmentId;
+    void _input;
+    throw new Error("本测试不使用作业修改");
   }
 
   async listTeacherProviders(_session: BrowserSession) {
@@ -70,11 +203,11 @@ export class EmptyAppApi implements AppApi {
   async updateAssignmentStatus(
     _session: BrowserSession,
     _assignmentId: string,
-    _status: "draft" | "archived",
+    _action: "archive" | "restore",
   ): Promise<AssignmentDetail> {
     void _session;
     void _assignmentId;
-    void _status;
+    void _action;
     throw new Error("本测试不使用作业状态");
   }
 
@@ -118,6 +251,19 @@ export class EmptyAppApi implements AppApi {
     void _assignmentId;
     void _submissionId;
     throw new Error("本测试不使用论文下载");
+  }
+
+  async createGradingJob(
+    _session: BrowserSession,
+    _assignmentId: string,
+    _submissionIds: string[],
+    _idempotencyKey: string,
+  ): Promise<GradingJobCreated> {
+    void _session;
+    void _assignmentId;
+    void _submissionIds;
+    void _idempotencyKey;
+    throw new Error("本测试不使用批改任务创建");
   }
 
   async listTeachers(_session: BrowserSession): Promise<TeacherAccount[]> {

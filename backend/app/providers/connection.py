@@ -6,7 +6,7 @@ import socket
 import ssl
 from dataclasses import dataclass
 from decimal import Decimal
-from ipaddress import IPv4Address, IPv6Address, ip_address
+from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from typing import Any, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
@@ -32,6 +32,7 @@ OFFICIAL_BASE_URLS: dict[ProviderType, str] = {
     ProviderType.ANTHROPIC: "https://api.anthropic.com",
     ProviderType.GEMINI: "https://generativelanguage.googleapis.com",
 }
+VPN_FAKE_IP_NETWORK = ip_network("198.18.0.0/15")
 
 
 class ProviderUrlError(ValueError):
@@ -97,11 +98,23 @@ def _is_forbidden_address(address: IPv4Address | IPv6Address) -> bool:
     )
 
 
+def _is_vpn_fake_address(address: IPv4Address | IPv6Address) -> bool:
+    """只识别常见 VPN 增强模式使用的基准测试网段。"""
+
+    return isinstance(address, IPv4Address) and address in VPN_FAKE_IP_NETWORK
+
+
 class ProviderBaseUrlPolicy:
     """规范化 Base URL，并拒绝可能访问内网的目标。"""
 
-    def __init__(self, resolver: HostResolver | None = None) -> None:
+    def __init__(
+        self,
+        resolver: HostResolver | None = None,
+        *,
+        allow_official_fake_ip: bool = False,
+    ) -> None:
         self._resolver = resolver or SystemHostResolver()
+        self._allow_official_fake_ip = allow_official_fake_ip
 
     async def validate(
         self,
@@ -134,7 +147,11 @@ class ProviderBaseUrlPolicy:
             parsed_addresses = tuple(ip_address(address) for address in addresses)
         except ValueError as error:
             raise ProviderUrlError("Base URL DNS 返回了无效地址") from error
-        if any(_is_forbidden_address(address) for address in parsed_addresses):
+        allow_fake_ip = self._allow_official_fake_ip and official_url is not None
+        if any(
+            _is_forbidden_address(address) and not (allow_fake_ip and _is_vpn_fake_address(address))
+            for address in parsed_addresses
+        ):
             raise ProviderUrlError("Base URL 只能解析到公网地址")
         return ValidatedBaseUrl(
             value=normalized,

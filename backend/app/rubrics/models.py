@@ -55,11 +55,11 @@ class AssignmentUpdate(BaseModel):
 
 
 class AssignmentStatusUpdate(BaseModel):
-    """显式归档或恢复作业；就绪状态只由确认 Rubric 产生。"""
+    """显式归档或恢复作业；恢复后的状态由已确认 Rubric 决定。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["draft", "archived"]
+    action: Literal["archive", "restore"]
 
 
 class RubricDraftCreate(BaseModel):

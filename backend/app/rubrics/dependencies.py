@@ -19,7 +19,9 @@ def get_assignment_rubric_service(request: Request) -> AssignmentRubricService:
         repository=SqlAlchemyAssignmentRubricRepository(database),
         cipher=ApiKeyCipher.from_base64_master_key(settings.provider_master_key.get_secret_value()),
         generator=OpenAICompatibleRubricGenerator(
-            url_policy=ProviderBaseUrlPolicy(),
+            url_policy=ProviderBaseUrlPolicy(
+                allow_official_fake_ip=settings.allow_official_provider_fake_ip,
+            ),
             http_client=HttpCoreRubricClient(),
         ),
     )

@@ -251,7 +251,7 @@ class SqlAlchemyAssignmentRubricRepository:
         self,
         owner_id: UUID,
         assignment_id: UUID,
-        status: str,
+        action: str,
     ) -> AssignmentDetail | None:
         async with self._teacher_session(owner_id) as session:
             assignment = await session.scalar(
@@ -264,11 +264,23 @@ class SqlAlchemyAssignmentRubricRepository:
             )
             if assignment is None:
                 return None
-            if status == "draft" and assignment.status not in {"draft", "archived"}:
+            if action == "archive":
+                if assignment.status == "archived":
+                    return await self._load_detail(session, owner_id, assignment_id)
+                assignment.status = "archived"
+            elif action == "restore":
+                if assignment.status != "archived":
+                    return None
+                confirmed_rubric_id = await session.scalar(
+                    select(RubricVersion.id).where(
+                        RubricVersion.assignment_id == assignment_id,
+                        RubricVersion.owner_id == owner_id,
+                        RubricVersion.status == "confirmed",
+                    )
+                )
+                assignment.status = "ready" if confirmed_rubric_id is not None else "draft"
+            else:
                 return None
-            if status not in {"draft", "archived"}:
-                return None
-            assignment.status = status
             assignment.updated_at = datetime.now(UTC)
             await session.flush()
             return await self._load_detail(session, owner_id, assignment_id)

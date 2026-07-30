@@ -22,7 +22,7 @@ export const authCopy = {
     expiredMessage: "邀请或重置链接无效或已过期，请重新申请。",
     firstPasswordTitle: "设置首次密码",
     newPasswordTitle: "设置新密码",
-    passwordHint: "密码至少 8 位，保存后会进入 Paper Grading。",
+    passwordHint: "密码至少 8 位，保存后会进入 Paper Grading。", // pragma: allowlist secret
     newPassword: "新密码",
     confirmPassword: "确认密码",
     passwordMismatch: "两次输入的密码不一致。",
@@ -35,12 +35,12 @@ export const authCopy = {
     loginSubtitle: "For invited teachers and administrators only.",
     email: "Email",
     emailPlaceholder: "Enter your email",
-    password: "Password",
-    passwordPlaceholder: "Enter your password",
+    password: "Password", // pragma: allowlist secret
+    passwordPlaceholder: "Enter your password", // pragma: allowlist secret
     invalidCredentials: "The email or password is incorrect.",
     signIn: "Sign in",
     signingIn: "Signing in…",
-    forgotPassword: "Forgot password?",
+    forgotPassword: "Forgot password?", // pragma: allowlist secret
     forgotTitle: "Reset password",
     forgotSubtitle: "Enter your invited email to receive a secure reset link.",
     resetFailed: "The reset email could not be sent. Please try again later.",
@@ -51,13 +51,13 @@ export const authCopy = {
     checkingLink: "Checking the secure link…",
     expiredTitle: "Link expired",
     expiredMessage: "This invitation or reset link is invalid or expired. Request a new one.",
-    firstPasswordTitle: "Create your password",
-    newPasswordTitle: "Set a new password",
-    passwordHint: "Use at least 8 characters. You will sign in after saving.",
-    newPassword: "New password",
-    confirmPassword: "Confirm password",
-    passwordMismatch: "The passwords do not match.",
-    passwordSaveFailed: "The password could not be saved. Open the email link again.",
+    firstPasswordTitle: "Create your password", // pragma: allowlist secret
+    newPasswordTitle: "Set a new password", // pragma: allowlist secret
+    passwordHint: "Use at least 8 characters. You will sign in after saving.", // pragma: allowlist secret
+    newPassword: "New password", // pragma: allowlist secret
+    confirmPassword: "Confirm password", // pragma: allowlist secret
+    passwordMismatch: "The passwords do not match.", // pragma: allowlist secret
+    passwordSaveFailed: "The password could not be saved. Open the email link again.", // pragma: allowlist secret
     saveAndSignIn: "Save and sign in",
     saving: "Saving…",
   },

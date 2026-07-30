@@ -28,6 +28,18 @@ DOCX_MAIN_CONTENT_TYPE = (
 OFFICE_DOCUMENT_RELATIONSHIP = (
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
 )
+UNSAFE_ENTRY_PREFIXES = ("word/embeddings/", "word/activex/")
+UNSAFE_RELATIONSHIP_TYPES = {
+    "http://schemas.microsoft.com/office/2006/relationships/activexcontrol",
+    "http://schemas.microsoft.com/office/2006/relationships/activexcontrolbinary",
+    "http://schemas.openxmlformats.org/officedocument/2006/relationships/control",
+    "http://schemas.openxmlformats.org/officedocument/2006/relationships/oleobject",
+    "http://schemas.openxmlformats.org/officedocument/2006/relationships/package",
+}
+MACRO_RELATIONSHIP_TYPES = {
+    "http://schemas.microsoft.com/office/2006/relationships/vbaproject",
+    "http://schemas.openxmlformats.org/officedocument/2006/relationships/vbaproject",
+}
 
 
 def _validate_archive(document: StagedDocument, limits: ParseLimits) -> None:
@@ -42,8 +54,19 @@ def _validate_archive(document: StagedDocument, limits: ParseLimits) -> None:
             total_uncompressed = 0
             for entry in entries:
                 path = PurePosixPath(entry.filename)
+                normalized_name = entry.filename.casefold()
                 if path.is_absolute() or ".." in path.parts or entry.flag_bits & 0x1:
                     raise DocumentParseError("docx_archive_invalid", "DOCX 压缩结构无效")
+                if normalized_name == "word/vbaproject.bin":
+                    raise DocumentParseError(
+                        "docx_macro_unsupported",
+                        "不支持包含宏的 Word 文件",
+                    )
+                if normalized_name.startswith(UNSAFE_ENTRY_PREFIXES):
+                    raise DocumentParseError(
+                        "docx_active_content_unsupported",
+                        "不支持包含内嵌对象或 ActiveX 的 Word 文件",
+                    )
                 total_uncompressed += entry.file_size
                 if total_uncompressed > limits.max_uncompressed_bytes:
                     raise DocumentParseError("docx_archive_too_large", "DOCX 解压后内容过大")
@@ -58,8 +81,27 @@ def _validate_archive(document: StagedDocument, limits: ParseLimits) -> None:
                     xml = archive.read(entry)
                     if b"<!DOCTYPE" in xml.upper() or b"<!ENTITY" in xml.upper():
                         raise DocumentParseError("docx_xml_unsafe", "DOCX 包含不安全 XML")
-            if "word/vbaProject.bin" in names:
-                raise DocumentParseError("docx_macro_unsupported", "不支持包含宏的 Word 文件")
+                    if entry.filename.endswith(".rels"):
+                        relationship_tree = ElementTree.fromstring(xml)
+                        for item in relationship_tree.findall(
+                            f"{{{RELATIONSHIPS_NAMESPACE}}}Relationship"
+                        ):
+                            if item.get("TargetMode") == "External":
+                                raise DocumentParseError(
+                                    "docx_external_relationship",
+                                    "DOCX 包含外部关系",
+                                )
+                            relationship_type = (item.get("Type") or "").casefold()
+                            if relationship_type in MACRO_RELATIONSHIP_TYPES:
+                                raise DocumentParseError(
+                                    "docx_macro_unsupported",
+                                    "不支持包含宏的 Word 文件",
+                                )
+                            if relationship_type in UNSAFE_RELATIONSHIP_TYPES:
+                                raise DocumentParseError(
+                                    "docx_active_content_unsupported",
+                                    "不支持包含内嵌对象或 ActiveX 的 Word 文件",
+                                )
             content_types = ElementTree.fromstring(archive.read("[Content_Types].xml"))
             has_document_content_type = any(
                 item.get("PartName") == "/word/document.xml"

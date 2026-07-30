@@ -4,7 +4,7 @@
 
 Paper Grading 是一个面向教师的云端英文作文批改网站。管理员创建教师账户并统一配置模型 API；教师创建作业、确认评分标准、批量上传论文、复核 AI 评分建议并导出 Excel。
 
-阶段 1 至阶段 9 已完成。七类模型适配器、本地质量门禁、DeepSeek 真实评分冒烟和阶段 9 全部验收均已通过。
+阶段 1 至阶段 13 已完成。阶段 14 本地开发与自动化验收已完成，真实 Supabase/Redis、供应商、100 篇、Render 和生产证据仍待取得，因此阶段 14 保持进行中。自动清理与备份保持关闭。评分提示词为 `grading-prompt.v3`，历史版本仍按原快照重建。
 
 ## 计划功能
 
@@ -49,6 +49,7 @@ npm --prefix frontend ci
 ```bash
 export APP_ENV=development
 export DATABASE_URL=postgresql+asyncpg://localhost:5432/paper_grading
+export REDIS_URL=redis://127.0.0.1:6379/0
 export DATABASE_POOL_SIZE=5
 export DATABASE_POOL_TIMEOUT_SECONDS=5.0
 export SUPABASE_URL=https://your-project.supabase.co
@@ -63,10 +64,46 @@ export FRONTEND_ORIGIN=http://127.0.0.1:5173
 ./.venv/bin/uvicorn app.main:app --app-dir backend --reload
 ```
 
+本地 Redis 返回 `PONG` 后，再启动 Celery Worker：
+
+```bash
+redis-cli ping
+cd backend
+../.venv/bin/python -m app.workers.supervisor
+```
+
+启动器会建立两个独立进程：`grading@...` 只消费 `paper_grading.grading`，`maintenance@...`
+只消费 `paper_grading.maintenance` 并运行 Beat。两者不共享执行槽；维护任务最多运行 25 秒，
+不能再占住评分 Worker。
+
+导出使用第三个独立消费者，必须在另一个终端启动；它只消费 `paper_grading.exports`，配置不需要供应商主密钥：
+
+```bash
+cd '/Users/a1-6/Documents/Paper Grading'
+set -a
+source .env.stage7-local
+set +a
+unset PROVIDER_MASTER_KEY
+cd backend
+../.venv/bin/celery -A app.export.celery_app:celery_app worker --loglevel=INFO --concurrency=1 --queues=paper_grading.exports --hostname=exports@%h
+```
+
+默认 `ALLOW_OFFICIAL_PROVIDER_FAKE_IP=false`。仅当本地 VPN 把内置供应商官方域名映射到
+`198.18.0.0/15`、用户已明确允许且只为本次真实验收时，才可在 Worker 终端临时设为 `true`；
+停止 Worker 后必须立即恢复 `false`。该例外不适用于自定义 Base URL、真实内网地址或生产环境，
+生产配置会在启动时拒绝它。
+
 启动前端：
 
 ```bash
-npm --prefix frontend run dev -- --host 127.0.0.1
+cd '/Users/a1-6/Documents/Paper Grading'
+set -a
+source .env.stage7-local
+set +a
+export VITE_API_BASE_URL='http://127.0.0.1:8000'
+export VITE_SUPABASE_URL="${SUPABASE_URL}"
+export VITE_SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY}"
+npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 ```
 
 前端还需显式提供 `VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY` 和 `VITE_API_BASE_URL`。`SUPABASE_SECRET_KEY`、`PROVIDER_MASTER_KEY` 和模型 API Key 只能存在于后端，不能使用 `VITE_` 前缀。生产 API 启动时会读取 Supabase Auth 公开设置；公开注册未关闭时直接停止启动。
@@ -81,7 +118,11 @@ npm --prefix frontend run dev -- --host 127.0.0.1
 
 ## 部署
 
-`infra/render.yaml` 已固定前端和 API 的真实构建、启动与健康检查命令，但自动部署关闭，尚未创建任何 Render 资源。Redis 和 Worker 在阶段 10 实现后再加入。
+`infra/render.yaml` 已固定前端、API、评分/维护 Worker、独立 Excel 导出 Worker 和持久化 Key Value 的构建与启动配置，但自动部署关闭，尚未创建任何 Render 资源。Worker 和 Key Value 使用 Starter，创建前必须确认付费。导出 Worker 不注入 `PROVIDER_MASTER_KEY`。
+
+导出 Worker 也不接收通用 `DATABASE_URL`。`0017` 创建可登录、无初始密码的 `paper_grading_export_worker` 最小角色；部署者须在数据库侧单独设置强密码，并把该角色的 Supavisor session pooler 5432 地址仅注入 `EXPORT_DATABASE_URL`。该角色只能读冻结导出表并执行领取、完成和失败函数，不能读取供应商、作业、论文、评分 attempt 或教师复核来源表。
+
+评分/维护 Worker 同样不能使用 API 数据库角色。`0019` 把既有 `paper_grading_worker` 最小角色改为可登录，并只增加私有 schema 使用权与两个 Storage 配额函数执行权，不增加表权限或设置密码；部署者须在数据库侧交互设置独立强密码，并把 `paper_grading_worker.<project-ref>` 的 Supavisor session pooler 5432 地址仅注入评分 Worker 的 `DATABASE_URL`。
 
 Render 免费 Web Service 不支持 pre-deploy command。每次手动部署 API 前，必须先在受控环境显式执行迁移；迁移失败就停止部署：
 
@@ -91,9 +132,9 @@ MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' .venv/bin/alembic 
 
 `MIGRATION_DATABASE_URL` 必须是启用 SSL 的 Supabase direct 直连地址，只在支持 IPv6 的受控迁移环境临时提供，不得注入 Render API，也不得回退使用 `DATABASE_URL`。
 
-阶段 3 的真实 Auth 验收步骤见 `docs/STAGE3_ACCEPTANCE.md`，阶段 4 的隔离验收见 `docs/STAGE4_ACCEPTANCE.md`，阶段 5 的模型配置迁移见 `docs/STAGE5_ACCEPTANCE.md`，阶段 6 的真实 Rubric 流程见 `docs/STAGE6_ACCEPTANCE.md`，阶段 7 的 Supabase Storage、迁移和上传验收见 `docs/STAGE7_ACCEPTANCE.md`，阶段 8 的评分快照迁移见 `docs/STAGE8_ACCEPTANCE.md`；这些外部操作只由用户执行。
+阶段 3 的真实 Auth 验收步骤见 `docs/STAGE3_ACCEPTANCE.md`，阶段 4 的隔离验收见 `docs/STAGE4_ACCEPTANCE.md`，阶段 5 的模型配置迁移见 `docs/STAGE5_ACCEPTANCE.md`，阶段 6 的真实 Rubric 流程见 `docs/STAGE6_ACCEPTANCE.md`，阶段 7 的 Supabase Storage、迁移和上传验收见 `docs/STAGE7_ACCEPTANCE.md`，阶段 8 的评分快照迁移见 `docs/STAGE8_ACCEPTANCE.md`，阶段 10 的批量流水线验收见 `docs/STAGE10_ACCEPTANCE.md`，阶段 11 的教师复核验收见 `docs/STAGE11_ACCEPTANCE.md`，阶段 12 的迁移、权限、Storage、Excel 和浏览器步骤见 `docs/STAGE12_ACCEPTANCE.md`。阶段 13 验收见 `docs/STAGE13_ACCEPTANCE.md`，阶段 14 总验收见 `docs/STAGE14_ACCEPTANCE.md`；部署、回滚、冒烟、监控与恢复步骤统一位于 `docs/runbooks/`。外部写入、付费和破坏性操作仍只由用户明确授权后执行。
 
-最终部署顺序仍为：数据库迁移 → API → Redis → Worker → 前端 → 冒烟测试。
+最终部署顺序固定为：数据库迁移 → API → Redis → 评分/维护 Worker → Excel 导出 Worker → 前端 → 冒烟测试。
 
 ## 测试
 
@@ -103,8 +144,9 @@ MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' .venv/bin/alembic 
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 npm --prefix frontend run test
+npm --prefix frontend run audit:dependencies
 npm --prefix frontend run build
-npm --prefix frontend audit --audit-level=high
+npm --prefix frontend run e2e:local
 ```
 
 后端检查：
@@ -113,7 +155,7 @@ npm --prefix frontend audit --audit-level=high
 cd backend
 ../.venv/bin/ruff check .
 ../.venv/bin/ruff format --check .
-../.venv/bin/mypy app tests
+../.venv/bin/mypy app tests scripts
 ../.venv/bin/pytest
 ```
 
@@ -127,6 +169,7 @@ MIGRATION_DATABASE_URL=postgresql+asyncpg://localhost:5432/paper_grading .venv/b
 
 ```bash
 TEST_MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' \
+TEST_DATABASE_URL='postgresql+asyncpg://postgres.<project-ref>:...@aws-0-<region>.pooler.supabase.com:5432/postgres?ssl=require' \
 TEST_SUPABASE_PROJECT_REF='...' \
 TEST_DATABASE_RESET_CONFIRMATION='I_UNDERSTAND_THIS_DELETES_STAGE_2_DATA' \
 TEST_TEACHER_AUTH_USER_ID='...' \
@@ -134,13 +177,18 @@ TEST_OTHER_AUTH_USER_ID='...' \
 .venv/bin/pytest -m postgres backend/tests/test_postgres_contract.py
 ```
 
-测试地址、project ref 和两个测试用户必须来自同一个独立 Supabase 测试项目，两个用户尚未创建 `profile`。验收会执行升级、回退、再次升级并验证非法写入；代码会拒绝与当前 `MIGRATION_DATABASE_URL` 相同的项目。普通 `pytest` 不运行这组破坏性测试，显式执行 `-m postgres` 时缺少任一配置都会失败。
+Direct 测试地址、Session Pooler 地址、project ref 和两个测试用户必须来自同一个独立 Supabase 测试项目。迁移回放只用 Direct；权限、RLS 和事务契约只用 Session Pooler 5432。代码会拒绝错误端口、错误项目用户名和与当前部署迁移库相同的项目。普通 `pytest` 不运行这组真实 PostgreSQL 测试，显式执行 `-m postgres` 时缺少任一配置都会失败。
 
 仓库与前端生产构建密钥扫描：
 
 ```bash
-.venv/bin/detect-secrets scan --all-files --no-verify --exclude-files '(^|/)(\.venv|node_modules|dist|\.git|\.playwright-cli|\.env(?:\.[^/]+)?|\.(mypy|pytest|ruff)_cache)(/|$)' .
+git ls-files -co --exclude-standard -z |
+  xargs -0 .venv/bin/detect-secrets-hook --baseline .secrets.baseline
+find frontend/dist -type f -print0 |
+  xargs -0 .venv/bin/detect-secrets-hook
 ```
+
+`.secrets.baseline` 只包含已人工核对的测试占位符与界面文案哈希；新增候选、常见 Key/Token/Password 赋值或高熵内容都会失败。CI 不打印候选值。
 
 ## 搜索记录
 
@@ -181,6 +229,8 @@ TEST_OTHER_AUTH_USER_ID='...' \
 - [OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)：官方 OpenAI 适配器使用 Responses 与严格 JSON Schema，不复用通用兼容协议。
 - [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create)：Anthropic 使用独立认证、结构化输出、停止原因和缓存用量字段。
 - [Gemini GenerateContent](https://ai.google.dev/api/generate-content)：Gemini 使用独立 Schema、思考用量、拒答和截断信号，保持默认采样参数。
+- [Render Celery 部署文档](https://render.com/docs/deploy-celery)：Celery Worker 使用 Render Key Value 作为 broker，应用状态不存入队列。
+- [Render Blueprint 规范](https://render.com/docs/blueprint-spec)：Background Worker 不提供免费实例；Key Value 使用内部连接、`noeviction` 和持久化 Starter，避免队列消息被内存策略主动淘汰。
 
 ## 已完成
 
@@ -205,9 +255,17 @@ TEST_OTHER_AUTH_USER_ID='...' \
 - [x] 完成阶段 8 真实 Supabase `0010` 迁移回放、字段、约束和函数权限验收。
 - [x] 完成阶段 9 七类供应商适配器、能力/费用/用量契约、安全 HTTP 传输、错误分类和本地质量门禁。
 - [x] 完成阶段 9 DeepSeek 真实评分冒烟及 `STAGE9_ACCEPTANCE.md` 全部验收。
+- [x] 完成阶段 10 本地批次 API、Celery Worker、幂等状态机、SSE、审计持久化和自动化门禁。
+- [x] 完成阶段 10 `0014` 延迟完整性触发器回归和真实批次行为验收。
+- [x] 完成阶段 11 本地复核 API、原子确认迁移、教师工作台、自动化和替身浏览器检查。
+- [x] 完成阶段 11 真实 Supabase、双教师、真实论文和浏览器验收。
+- [x] 完成阶段 12 Excel 导出本地实现、独立 Worker、四工作表、前端流程和自动化门禁。
+- [x] 完成阶段 12 真实 Supabase、Storage、Excel 和浏览器验收。
+- [x] 完成阶段 13 配额、保留与备份安全基础及真实配额验收。
+- [x] 确认阶段 13 自动清理和备份保持关闭，后续启用时单独验收。
+- [x] 完成阶段 14 本地测试、安全修复、CI、Render 配置、浏览器自动化和运维文档。
 
 ## 待办
 
-- [ ] 实现阶段 10 Celery 批量评分。
-- [ ] 实现教师复核和 Excel 导出。
-- [ ] 完成安全、质量和生产部署验收。
+- [ ] 完成阶段 14 真实外部验收。
+- [ ] 完成质量校准和生产上线验收。

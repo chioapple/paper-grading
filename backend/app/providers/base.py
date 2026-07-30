@@ -20,6 +20,7 @@ StructuredOutputMode = Literal["json_schema", "json_object"]
 SchemaDialect = Literal["canonical", "openai", "anthropic", "gemini"]
 SamplingPolicy = Literal["temperature_zero", "temperature_fixed_0_6", "do_sample_false", "omit"]
 ThinkingPolicy = Literal["disabled", "enabled", "omit"]
+RetrySafety = Literal["never", "safe", "unknown"]
 OutputTokenParameter = Literal[
     "max_tokens",
     "max_completion_tokens",
@@ -36,11 +37,15 @@ class ProviderAdapterError(RuntimeError):
         message: str,
         *,
         retryable: bool = False,
+        retry_safety: RetrySafety | None = None,
         response: ProviderHttpResponse | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.retryable = retryable
+        self.retry_safety = retry_safety or ("unknown" if retryable else "never")
+        if self.retry_safety == "safe" and not self.retryable:
+            raise ValueError("只有可重试错误才能标记为安全重试")
         self.response = response
 
 
@@ -95,6 +100,21 @@ class ProviderModelCapabilities(BaseModel):
     output_token_parameter: OutputTokenParameter
     supports_model_listing: bool
     pricing: ProviderPricing | None = None
+
+
+class ProviderModelProfile(BaseModel):
+    """管理员确认的模型能力和一次评分的保守输出上限。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capabilities: ProviderModelCapabilities
+    grading_max_output_tokens: int = Field(gt=0, le=1_000_000)
+
+    @model_validator(mode="after")
+    def validate_output_limit(self) -> ProviderModelProfile:
+        if self.grading_max_output_tokens > self.capabilities.max_output_tokens:
+            raise ValueError("评分输出上限超过模型能力快照")
+        return self
 
 
 class ProviderGradeRequest(BaseModel):
@@ -216,6 +236,7 @@ def raise_for_provider_status(
             "provider_timeout",
             "供应商评分请求超时",
             retryable=True,
+            retry_safety="safe",
             response=response,
         )
     if status_code == 429:
@@ -223,6 +244,7 @@ def raise_for_provider_status(
             "provider_rate_limited",
             "供应商暂时限制评分请求",
             retryable=True,
+            retry_safety="safe",
             response=response,
         )
     if status_code in {500, 502, 503, 529}:
@@ -230,6 +252,7 @@ def raise_for_provider_status(
             "provider_unavailable",
             "供应商评分服务暂时不可用",
             retryable=True,
+            retry_safety="safe",
             response=response,
         )
     raise ProviderAdapterError(

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DictionaryObject, NameObject
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -68,6 +69,33 @@ def build_encrypted_pdf() -> bytes:
     writer = PdfWriter()
     writer.append_pages_from_reader(reader)
     writer.encrypt("test-password")
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def build_pdf_with_javascript() -> bytes:
+    reader = PdfReader(BytesIO(build_text_pdf()))
+    writer = PdfWriter()
+    writer.append_pages_from_reader(reader)
+    writer.add_js("app.alert('unsafe')")
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def build_pdf_with_forbidden_structure(
+    *,
+    key: str = "/Metadata",
+    action: str | None = None,
+) -> bytes:
+    reader = PdfReader(BytesIO(build_text_pdf()))
+    writer = PdfWriter()
+    writer.append_pages_from_reader(reader)
+    value = DictionaryObject()
+    if action is not None:
+        value[NameObject("/S")] = NameObject(action)
+    writer._root_object[NameObject(key)] = value  # noqa: SLF001
     output = BytesIO()
     writer.write(output)
     return output.getvalue()
@@ -203,6 +231,51 @@ def test_encrypted_pdf_and_page_limit_are_rejected_explicitly(tmp_path: Path) ->
     ):
         parse_document(long_pdf, ParseLimits(max_pdf_pages=1))
     assert page_error.value.code == "pdf_pages_too_many"
+
+
+def test_pdf_with_active_content_is_rejected(tmp_path: Path) -> None:
+    with (
+        stage_upload(
+            BytesIO(build_pdf_with_javascript()),
+            original_filename="active-content.pdf",
+            client_media_type=PDF_MEDIA_TYPE,
+            temporary_directory=tmp_path,
+            limits=ParseLimits(),
+        ) as staged,
+        pytest.raises(DocumentParseError) as error,
+    ):
+        parse_document(staged, ParseLimits())
+
+    assert error.value.code == "pdf_active_content_unsupported"
+
+
+@pytest.mark.parametrize(
+    ("key", "action"),
+    [
+        ("/AcroForm", None),
+        ("/EmbeddedFiles", None),
+        ("/Launch", None),
+        ("/Metadata", "/URI"),
+    ],
+)
+def test_pdf_active_content_classes_are_independently_rejected(
+    tmp_path: Path,
+    key: str,
+    action: str | None,
+) -> None:
+    with (
+        stage_upload(
+            BytesIO(build_pdf_with_forbidden_structure(key=key, action=action)),
+            original_filename="forbidden-structure.pdf",
+            client_media_type=PDF_MEDIA_TYPE,
+            temporary_directory=tmp_path,
+            limits=ParseLimits(),
+        ) as staged,
+        pytest.raises(DocumentParseError) as error,
+    ):
+        parse_document(staged, ParseLimits())
+
+    assert error.value.code == "pdf_active_content_unsupported"
 
 
 def test_pdf_text_and_block_limits_are_enforced(tmp_path: Path) -> None:

@@ -14,7 +14,8 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return <AuthServiceError message={error} />;
   }
   if (!account) {
-    return <Navigate replace state={{ from: location.pathname }} to="/login" />;
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate replace state={{ from: returnTo }} to="/login" />;
   }
   if (account.status === "invited") {
     return <Navigate replace to="/auth/callback" />;
@@ -32,6 +33,7 @@ export function AdminRoute({ children }: { children: ReactNode }) {
 
 export function PublicOnlyRoute({ children }: { children: ReactNode }) {
   const { account, error, isLoading } = useAuth();
+  const location = useLocation();
   if (isLoading) {
     return <main className="route-loading" aria-label="正在加载" />;
   }
@@ -42,7 +44,8 @@ export function PublicOnlyRoute({ children }: { children: ReactNode }) {
     return <Navigate replace to="/auth/callback" />;
   }
   if (account) {
-    return <Navigate replace to="/assignments" />;
+    const state = location.state as { from?: string } | null;
+    return <Navigate replace to={state?.from ?? "/assignments"} />;
   }
   return children;
 }

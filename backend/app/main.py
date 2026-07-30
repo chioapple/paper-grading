@@ -1,27 +1,42 @@
 """FastAPI 应用入口。"""
 
+import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.api.admin_users import router as admin_users_router
 from app.api.assignments import router as assignments_router
 from app.api.auth import router as auth_router
+from app.api.exports import router as exports_router
+from app.api.grading_jobs import router as grading_jobs_router
 from app.api.health import router as health_router
 from app.api.providers import router as providers_router
+from app.api.reviews import router as reviews_router
 from app.api.rubrics import router as rubrics_router
 from app.api.submissions import router as submissions_router
 from app.auth.service import AccountStateError, AccountSyncError
 from app.auth.supabase import SupabaseAuthError, SupabaseAuthGateway
 from app.config import AppEnvironment, Settings
 from app.db import Database
+from app.export.service import (
+    ExportDataError,
+    ExportIdempotencyConflict,
+    ExportNotFoundError,
+    ExportStateError,
+)
 from app.http_limits import UploadBodyLimitMiddleware
+from app.monitoring.repository import (
+    QuotaExceededError,
+    QuotaUnavailableError,
+    SqlAlchemyQuotaRepository,
+)
 from app.parsing.models import DocumentParseError
 from app.providers.config import (
     ProviderConfigurationError,
@@ -30,6 +45,13 @@ from app.providers.config import (
 )
 from app.providers.connection import ProviderConnectionError, ProviderUrlError
 from app.readiness import DatabaseReadinessProbe
+from app.reviews.service import (
+    ReviewConflictError,
+    ReviewDataError,
+    ReviewNotFoundError,
+    ReviewStateError,
+    ReviewValidationError,
+)
 from app.rubrics.generation import RubricGenerationError
 from app.rubrics.service import (
     AssignmentNotFoundError,
@@ -46,6 +68,14 @@ from app.submissions.service import (
     SubmissionNotFoundError,
     SubmissionTransitionError,
 )
+from app.workers.service import (
+    GradingJobConfigurationError,
+    GradingJobIdempotencyConflict,
+    GradingJobNotFoundError,
+    GradingJobStateError,
+)
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -58,11 +88,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             async with (
                 httpx.AsyncClient(
-                    timeout=runtime_settings.supabase_auth_timeout_seconds
+                    timeout=runtime_settings.supabase_auth_timeout_seconds,
+                    trust_env=False,
                 ) as auth_client,
                 httpx.AsyncClient(
                     timeout=runtime_settings.supabase_storage_timeout_seconds,
                     limits=httpx.Limits(max_connections=5, max_keepalive_connections=5),
+                    trust_env=False,
                 ) as storage_client,
             ):
                 auth_gateway = SupabaseAuthGateway(
@@ -84,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 application.state.object_storage = SupabaseObjectStorage.from_settings(
                     runtime_settings,
                     storage_client,
+                    quota=SqlAlchemyQuotaRepository(database),
                 )
                 yield
         finally:
@@ -103,8 +136,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=[frontend_origin] if frontend_origin else [],
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "Last-Event-ID"],
     )
+
+    @application.middleware("http")
+    async def add_security_headers(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """为所有 API 响应添加固定浏览器安全头。"""
+
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
 
     @application.exception_handler(RequestValidationError)
     async def handle_request_validation_error(
@@ -182,6 +229,196 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=404,
             content={"detail": {"code": "provider_not_found", "message": "供应商配置不存在"}},
+        )
+
+    @application.exception_handler(GradingJobNotFoundError)
+    async def handle_grading_job_not_found(
+        _request: Request,
+        _error: GradingJobNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": {"code": "grading_job_not_found", "message": "评分批次不存在"}},
+        )
+
+    @application.exception_handler(GradingJobIdempotencyConflict)
+    async def handle_grading_job_idempotency_conflict(
+        _request: Request,
+        _error: GradingJobIdempotencyConflict,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": {
+                    "code": "grading_job_idempotency_conflict",
+                    "message": "幂等键已用于不同批次请求",
+                }
+            },
+        )
+
+    @application.exception_handler(GradingJobStateError)
+    async def handle_grading_job_state_error(
+        _request: Request,
+        _error: GradingJobStateError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": {
+                    "code": "grading_job_state_conflict",
+                    "message": "评分批次状态不允许当前操作",
+                }
+            },
+        )
+
+    @application.exception_handler(GradingJobConfigurationError)
+    async def handle_grading_job_configuration_error(
+        _request: Request,
+        error: GradingJobConfigurationError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": {
+                    "code": error.code,
+                    "message": str(error),
+                }
+            },
+        )
+
+    @application.exception_handler(QuotaExceededError)
+    async def handle_quota_exceeded(
+        _request: Request,
+        error: QuotaExceededError,
+    ) -> JSONResponse:
+        message = (
+            "系统容量已达到安全上限，暂时不能创建新的评分批次"
+            if error.resource == "database"
+            else "文件存储容量已达到安全上限，暂时不能继续上传"
+        )
+        return JSONResponse(
+            status_code=507,
+            content={"detail": {"code": error.code, "message": message}},
+        )
+
+    @application.exception_handler(QuotaUnavailableError)
+    async def handle_quota_unavailable(
+        _request: Request,
+        error: QuotaUnavailableError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": {
+                    "code": error.code,
+                    "message": "系统暂时无法确认剩余容量，请稍后重试",
+                }
+            },
+        )
+
+    @application.exception_handler(ExportNotFoundError)
+    async def handle_export_not_found(
+        _request: Request,
+        _error: ExportNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": {"code": "export_not_found", "message": "导出不存在"}},
+        )
+
+    @application.exception_handler(ExportIdempotencyConflict)
+    async def handle_export_idempotency_conflict(
+        _request: Request,
+        _error: ExportIdempotencyConflict,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": {
+                    "code": "export_idempotency_conflict",
+                    "message": "幂等键已用于不同导出请求",
+                }
+            },
+        )
+
+    @application.exception_handler(ExportStateError)
+    async def handle_export_state_error(
+        _request: Request,
+        error: ExportStateError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": {"code": "export_state_conflict", "message": str(error)}},
+        )
+
+    @application.exception_handler(ExportDataError)
+    async def handle_export_data_error(
+        _request: Request,
+        error: ExportDataError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": {"code": error.code, "message": str(error)}},
+        )
+
+    @application.exception_handler(ReviewNotFoundError)
+    async def handle_review_not_found(
+        _request: Request,
+        _error: ReviewNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": {"code": "review_not_found", "message": "复核任务不存在"}},
+        )
+
+    @application.exception_handler(ReviewStateError)
+    async def handle_review_state_error(
+        _request: Request,
+        _error: ReviewStateError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": {
+                    "code": "review_state_conflict",
+                    "message": "复核状态已变化，请刷新后重试",
+                }
+            },
+        )
+
+    @application.exception_handler(ReviewConflictError)
+    async def handle_review_conflict_error(
+        _request: Request,
+        _error: ReviewConflictError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": {
+                    "code": "review_concurrent_conflict",
+                    "message": "复核已被另一请求修改，请刷新后重试",
+                }
+            },
+        )
+
+    @application.exception_handler(ReviewValidationError)
+    async def handle_review_validation_error(
+        _request: Request,
+        error: ReviewValidationError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": {"code": error.code, "message": str(error)}},
+        )
+
+    @application.exception_handler(ReviewDataError)
+    async def handle_review_data_error(
+        _request: Request,
+        error: ReviewDataError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": {"code": error.code, "message": str(error)}},
         )
 
     @application.exception_handler(ProviderStateError)
@@ -405,8 +642,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(admin_users_router)
     application.include_router(assignments_router)
     application.include_router(auth_router)
+    application.include_router(exports_router)
     application.include_router(health_router)
+    application.include_router(grading_jobs_router)
     application.include_router(providers_router)
+    application.include_router(reviews_router)
     application.include_router(rubrics_router)
     application.include_router(submissions_router)
     return application

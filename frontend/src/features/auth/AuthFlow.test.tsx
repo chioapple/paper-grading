@@ -157,6 +157,26 @@ describe("登录流程", () => {
     });
   });
 
+  it("登录后保留成绩导出的批次参数", async () => {
+    renderUnauthenticatedApp(
+      "/exports?jobId=cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    );
+
+    expect(await screen.findByRole("heading", { name: "欢迎登录" })).toBeVisible();
+    fireEvent.change(screen.getByLabelText("邮箱"), {
+      target: { value: "teacher@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("密码"), {
+      target: { value: "correct-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(
+      await screen.findByText("无法访问该批次，请返回批改任务重新选择。"),
+    ).toBeVisible();
+    expect(screen.queryByText("请先从批改任务选择一个批次。")).not.toBeInTheDocument();
+  });
+
   it("登录页语言开关会切换可见文案", async () => {
     renderUnauthenticatedApp("/login");
 

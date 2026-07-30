@@ -64,6 +64,15 @@ def test_stage_four_catalog_has_forced_rls_and_minimum_privileges() -> None:
 
 
 async def check_stage_four_catalog() -> None:
+    await check_teacher_catalog(STAGE_FOUR_REVISION)
+
+
+async def check_teacher_catalog(
+    expected_revision: str,
+    *,
+    expected_policies: set[tuple[str, str, str]] | None = None,
+    expected_role_privileges: Mapping[str, set[str]] | None = None,
+) -> None:
     settings = TestMigrationSettings()
     database = build_test_database(settings)
     try:
@@ -126,19 +135,24 @@ async def check_stage_four_catalog() -> None:
                 )
             ).one()
 
-            assert revision == STAGE_FOUR_REVISION
+            assert revision == expected_revision
             assert table_security == dict.fromkeys(BUSINESS_TABLES, (True, True))
             assert not role.rolcanlogin
             assert not role.rolinherit
             assert not role.rolbypassrls
             assert postgres_can_set_role
-            assert policies == EXPECTED_POLICIES
+            assert policies == (
+                EXPECTED_POLICIES if expected_policies is None else expected_policies
+            )
             assert helper.prosecdef
             assert helper.provolatile == "s"
             assert tuple(helper.proconfig or ()) == ('search_path=""',)
 
             operations = {"SELECT", "INSERT", "UPDATE", "DELETE"}
-            for table_name, expected_privileges in ROLE_PRIVILEGES.items():
+            role_privileges = (
+                ROLE_PRIVILEGES if expected_role_privileges is None else expected_role_privileges
+            )
+            for table_name, expected_privileges in role_privileges.items():
                 for operation in operations:
                     has_teacher_privilege = (
                         await connection.execute(
@@ -283,7 +297,7 @@ def build_test_database(settings: TestMigrationSettings) -> Database:
     return Database.from_settings(
         Settings(
             APP_ENV="test",
-            DATABASE_URL=settings.test_migration_database_url,
+            DATABASE_URL=settings.test_database_url,
             DATABASE_POOL_SIZE=1,
             DATABASE_POOL_TIMEOUT_SECONDS=5,
             **TEST_AUTH_SETTINGS,

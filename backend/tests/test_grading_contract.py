@@ -198,6 +198,35 @@ def test_model_cannot_supply_a_total_score() -> None:
     assert error.value.code == "grade_output_schema_invalid"
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    ["dimension_reason", "revision_suggestion", "deduction_reason", "overall_feedback"],
+)
+def test_model_narrative_fields_must_use_english_text(field_name: str) -> None:
+    output = valid_model_output()
+    dimensions = output["dimensions"]
+    deductions = output["deductions"]
+    assert isinstance(dimensions, list)
+    assert isinstance(deductions, list)
+    first_dimension = dimensions[0]
+    first_deduction = deductions[0]
+    assert isinstance(first_dimension, dict)
+    assert isinstance(first_deduction, dict)
+    if field_name == "dimension_reason":
+        first_dimension["reason"] = "这不是英文评分理由。"
+    elif field_name == "revision_suggestion":
+        first_dimension["revision_suggestions"] = ["这不是英文修改建议。"]
+    elif field_name == "deduction_reason":
+        first_deduction["reason"] = "这不是英文扣分理由。"
+    else:
+        output["overall_feedback"] = "这不是英文总体反馈。"
+
+    with pytest.raises(GradeValidationError) as error:
+        validate_grade_response(output, build_request())
+
+    assert error.value.code == "grade_output_schema_invalid"
+
+
 @pytest.mark.parametrize("field_name", ["schema_version", "deductions"])
 def test_model_must_explicitly_return_every_top_level_contract_field(
     field_name: str,

@@ -271,6 +271,11 @@ a:focus-visible {
   height: 20px;
 }
 
+.utility-button > span,
+.account-button > span:not(.account-button__icon) {
+  white-space: nowrap;
+}
+
 .account-button {
   border-color: transparent;
   border-radius: 9px;
@@ -2059,5 +2064,896 @@ button.stage6-row-link {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Stage 11 teacher review workbench */
+.review-jobs-page {
+  max-width: 1180px;
+}
+
+.review-job-list {
+  display: grid;
+  gap: 24px;
+}
+
+.review-job-card {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.review-job-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 26px 18px;
+}
+
+.review-job-card__header h2 {
+  margin: 10px 0 6px;
+  font-size: 23px;
+}
+
+.review-job-card__header p,
+.review-job-card__progress span,
+.review-paper-list span,
+.review-unavailable {
+  color: var(--color-muted);
+}
+
+.review-job-card__header p {
+  margin: 0;
+}
+
+.review-status-pill {
+  display: inline-flex;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.review-job-card__progress {
+  display: grid;
+  min-width: 92px;
+  gap: 2px;
+  text-align: right;
+}
+
+.review-job-card__progress strong {
+  font-size: 25px;
+}
+
+.review-progress-track {
+  height: 5px;
+  margin: 0 26px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8edf3;
+}
+
+.review-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
+
+.review-job-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 14px 26px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.review-paper-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-border);
+}
+
+.review-paper-list li {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 26px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.review-paper-list li > div {
+  display: grid;
+  gap: 5px;
+}
+
+.review-job-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 18px 26px;
+}
+
+.review-job-card__actions .primary-button {
+  min-width: 230px;
+}
+
+.review-workbench-page {
+  min-width: 0;
+  background: var(--color-soft);
+}
+
+.review-workbench-header {
+  display: flex;
+  min-height: 116px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--color-border);
+  background: #fff;
+}
+
+.review-workbench-header h1 {
+  margin: 7px 0 4px;
+  font-size: 25px;
+}
+
+.review-workbench-header p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.review-workbench-header .stage6-row-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.review-workbench-header .stage6-row-link svg,
+.review-evidence-remove svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.review-score-summary {
+  display: grid;
+  gap: 3px;
+  text-align: right;
+}
+
+.review-score-summary span {
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.review-score-summary strong {
+  color: var(--color-accent);
+  font-size: 25px;
+}
+
+.review-mobile-tabs {
+  display: none;
+}
+
+.review-floating-message,
+.review-confirmed-banner {
+  margin: 12px 28px 0;
+}
+
+.review-confirmed-banner {
+  padding: 12px 16px;
+  border: 1px solid #b9d9c7;
+  border-radius: 8px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.review-workbench {
+  display: grid;
+  grid-template-columns: minmax(205px, 0.72fr) minmax(370px, 1.35fr) minmax(350px, 1.08fr);
+  min-height: calc(100vh - 116px);
+  margin-top: 12px;
+  border-top: 1px solid var(--color-border);
+  background: #fff;
+}
+
+.review-panel {
+  min-width: 0;
+  padding: 22px;
+}
+
+.review-panel + .review-panel {
+  border-left: 1px solid var(--color-border);
+}
+
+.review-panel h2 {
+  margin: 0 0 18px;
+  font-size: 19px;
+}
+
+.review-queue-panel ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-queue-panel li a,
+.review-queue-panel li > div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.review-queue-panel li a:hover {
+  background: var(--color-soft);
+}
+
+.review-queue-panel li.is-current a {
+  border-color: #b9d9c7;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.review-queue-panel li span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.review-paper-panel {
+  background: #fbfcfd;
+}
+
+.review-panel-heading {
+  display: grid;
+  gap: 18px;
+}
+
+.review-panel-heading p {
+  margin: -10px 0 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.review-evidence-adder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.review-evidence-adder label,
+.review-rubric-card label,
+.review-full-field {
+  display: grid;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.review-evidence-adder select,
+.review-rubric-card input[type="text"],
+.review-rubric-card textarea,
+.review-full-field textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.review-evidence-adder select,
+.review-rubric-card input[type="text"] {
+  min-height: 42px;
+  padding: 0 11px;
+}
+
+.review-evidence-adder .secondary-button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.review-document {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.review-document-block {
+  padding: 16px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  scroll-margin-block: 120px;
+}
+
+.review-document-block:focus {
+  outline: 3px solid rgba(8, 122, 67, 0.28);
+  outline-offset: 2px;
+}
+
+.review-document-block small {
+  color: #738096;
+  font-size: 12px;
+}
+
+.review-document-block p {
+  margin: 8px 0 0;
+  color: #18233e;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.review-document-block mark {
+  padding: 1px 2px;
+  border-radius: 2px;
+  background: #fff0a8;
+  color: inherit;
+}
+
+.review-form-panel {
+  overflow-wrap: anywhere;
+}
+
+.review-form-panel fieldset {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.review-rubric-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.review-rubric-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-rubric-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.review-rubric-card > p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.review-rubric-card textarea,
+.review-full-field textarea {
+  min-height: 88px;
+  padding: 10px 11px;
+  resize: vertical;
+}
+
+.review-deduction {
+  display: grid;
+  gap: 9px;
+}
+
+.review-checkbox-label {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+}
+
+.review-checkbox-label input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--color-accent);
+}
+
+.review-evidence-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-evidence-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.review-evidence-list button {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.review-evidence-list button span {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.review-evidence-list .review-evidence-remove {
+  display: grid;
+  width: 40px;
+  place-items: center;
+  padding: 0;
+  color: #a53a35;
+}
+
+.review-full-field {
+  margin-top: 16px;
+}
+
+.review-full-field small,
+.review-total-card small,
+.review-actions small {
+  color: var(--color-muted);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.review-total-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 9px;
+  background: var(--color-soft);
+}
+
+.review-total-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-total-card__final {
+  margin-top: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-accent);
+}
+
+.review-total-card__final strong {
+  font-size: 20px;
+}
+
+.review-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.review-actions .primary-button,
+.review-actions .secondary-button {
+  width: 100%;
+}
+
+@media (max-width: 1180px) and (min-width: 901px) {
+  .review-workbench {
+    grid-template-columns: 180px minmax(320px, 1.2fr) minmax(320px, 1fr);
+  }
+
+  .review-panel {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .review-mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--color-border);
+    background: #fff;
+  }
+
+  .review-mobile-tabs button {
+    min-height: 44px;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+
+  .review-mobile-tabs button[aria-selected="true"] {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    font-weight: 750;
+  }
+
+  .review-workbench {
+    display: block;
+    min-height: 0;
+    margin-top: 0;
+  }
+
+  .review-panel {
+    display: none;
+    min-height: 55vh;
+    border-left: 0 !important;
+  }
+
+  .review-panel[data-mobile-active="true"] {
+    display: block;
+  }
+}
+
+@media (max-width: 680px) {
+  .review-job-card__header,
+  .review-paper-list li,
+  .review-workbench-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .review-job-card__progress,
+  .review-score-summary {
+    text-align: left;
+  }
+
+  .review-paper-list li {
+    display: flex;
+  }
+
+  .review-job-card__actions .primary-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .review-workbench-header {
+    display: flex;
+    min-height: 0;
+    padding: 16px 18px;
+  }
+
+  .review-workbench-header h1 {
+    font-size: 21px;
+  }
+
+  .review-panel {
+    padding: 16px;
+  }
+
+  .review-evidence-adder {
+    grid-template-columns: 1fr;
+  }
+
+  .review-floating-message,
+  .review-confirmed-banner {
+    margin-inline: 16px;
+  }
+}
+
+/* Stage 12 Excel exports */
+.exports-page {
+  max-width: 1180px;
+}
+
+.export-create-panel,
+.exports-history {
+  margin-top: 28px;
+}
+
+.export-create-panel > h2,
+.exports-history > h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+}
+
+.export-create-content,
+.export-create-empty {
+  padding: 24px 26px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.export-create-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.export-create-empty p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.export-create-empty .secondary-button,
+.review-job-card__actions .secondary-button,
+.export-download-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 20px;
+  text-decoration: none;
+}
+
+.export-create-empty .secondary-button {
+  flex: 0 0 auto;
+}
+
+.export-create-content > header,
+.export-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.export-create-content h3,
+.export-card h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+}
+
+.export-create-content > header p {
+  margin: 7px 0 0;
+  color: var(--color-muted);
+}
+
+.export-create-content > header > span {
+  color: var(--color-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.export-source-range {
+  font-size: 14px;
+}
+
+.export-type-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 24px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.export-type-options legend {
+  grid-column: 1 / -1;
+  margin-bottom: 10px;
+  font-weight: 750;
+}
+
+.export-type-options label {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.export-type-options label:has(input:checked) {
+  border-color: #8ec4a7;
+  background: var(--color-accent-soft);
+}
+
+.export-type-options label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.export-type-options input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--color-accent);
+}
+
+.export-type-options input:focus-visible {
+  outline: 3px solid rgba(8, 122, 67, 0.32);
+  outline-offset: 3px;
+}
+
+.export-type-options label span {
+  display: grid;
+  gap: 6px;
+}
+
+.export-type-options small {
+  color: var(--color-muted);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.export-type-warning,
+.export-failure-reason {
+  color: #a53a35;
+  line-height: 1.5;
+}
+
+.export-type-warning {
+  margin: 14px 0 0;
+}
+
+.export-create-button {
+  margin-top: 20px;
+}
+
+.export-create-button:disabled,
+.export-download-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.exports-empty-state {
+  min-height: 330px;
+}
+
+.exports-empty-state h3 {
+  margin: 24px 0 8px;
+  font-size: 28px;
+}
+
+.export-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.export-card {
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  content-visibility: auto;
+  contain-intrinsic-size: 280px;
+}
+
+.export-card > header > strong {
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+
+.export-status {
+  display: inline-flex;
+  margin-bottom: 9px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--color-soft);
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.export-status--running {
+  background: #edf4ff;
+  color: #245a9b;
+}
+
+.export-status--completed {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.export-status--failed {
+  background: #fff0ef;
+  color: #a53a35;
+}
+
+.export-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 20px 0 0;
+  padding-top: 17px;
+  border-top: 1px solid var(--color-border);
+}
+
+.export-card dt {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.export-card dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.export-failure-reason {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fff6f5;
+  font-size: 14px;
+}
+
+.export-download-button {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.export-download-button svg,
+.review-job-card__actions .secondary-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.review-job-card__actions {
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .export-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .export-create-content,
+  .export-create-empty,
+  .export-card {
+    padding: 18px;
+  }
+
+  .export-create-empty,
+  .export-create-content > header,
+  .export-card > header,
+  .review-job-card__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .export-create-empty .secondary-button,
+  .export-create-button,
+  .review-job-card__actions .secondary-button,
+  .review-job-card__actions .primary-button {
+    width: 100%;
+  }
+
+  .export-type-options,
+  .export-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .export-card dl {
+    gap: 12px;
   }
 }

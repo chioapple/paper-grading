@@ -5,10 +5,61 @@ from httpcore import NetworkError
 
 from app.domain.enums import ProviderType
 from app.providers.connection import (
+    OFFICIAL_BASE_URLS,
     PinnedNetworkBackend,
     ProviderBaseUrlPolicy,
     ProviderUrlError,
 )
+
+
+@pytest.mark.anyio
+async def test_official_provider_can_use_vpn_fake_ip_when_local_exception_is_enabled() -> None:
+    class FakeIpResolver:
+        async def resolve(self, host: str, port: int) -> tuple[str, ...]:
+            assert (host, port) == ("api.deepseek.com", 443)
+            return ("198.18.0.4",)
+
+    validated = await ProviderBaseUrlPolicy(
+        resolver=FakeIpResolver(),
+        allow_official_fake_ip=True,
+    ).validate(
+        ProviderType.DEEPSEEK,
+        OFFICIAL_BASE_URLS[ProviderType.DEEPSEEK],
+    )
+
+    assert validated.addresses == ("198.18.0.4",)
+
+
+@pytest.mark.anyio
+async def test_vpn_fake_ip_exception_never_applies_to_custom_provider_urls() -> None:
+    class FakeIpResolver:
+        async def resolve(self, host: str, port: int) -> tuple[str, ...]:
+            return ("198.18.0.4",)
+
+    with pytest.raises(ProviderUrlError, match="公网"):
+        await ProviderBaseUrlPolicy(
+            resolver=FakeIpResolver(),
+            allow_official_fake_ip=True,
+        ).validate(
+            ProviderType.OPENAI_COMPATIBLE,
+            "https://models.example.com/v1",
+        )
+
+
+@pytest.mark.anyio
+async def test_official_fake_ip_exception_still_rejects_real_private_networks() -> None:
+    class PrivateResolver:
+        async def resolve(self, host: str, port: int) -> tuple[str, ...]:
+            return ("10.0.0.1",)
+
+    with pytest.raises(ProviderUrlError, match="公网"):
+        await ProviderBaseUrlPolicy(
+            resolver=PrivateResolver(),
+            allow_official_fake_ip=True,
+        ).validate(
+            ProviderType.DEEPSEEK,
+            OFFICIAL_BASE_URLS[ProviderType.DEEPSEEK],
+        )
 
 
 @pytest.mark.anyio

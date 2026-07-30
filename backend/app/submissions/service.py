@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import Protocol
 from uuid import UUID, uuid4
 
+from app.monitoring.repository import QuotaExceededError, QuotaUnavailableError
 from app.parsing.models import DocumentParseError, ParseLimits
 from app.parsing.normalize import parse_document, stage_upload_file
 from app.storage.supabase import (
@@ -235,6 +236,9 @@ class SubmissionService:
                             media_type=staged.media_type,
                             content_sha256=staged.content_sha256,
                         )
+                    except (QuotaExceededError, QuotaUnavailableError) as error:
+                        await self._mark_failed(owner_id, submission.id, error.code)
+                        raise
                     except SupabaseStorageError:
                         await self._mark_failed(owner_id, submission.id, "storage_source_failed")
                         raise
@@ -256,6 +260,9 @@ class SubmissionService:
                                 keys.extracted,
                                 parsed.model_dump_json().encode("utf-8"),
                             )
+                        except (QuotaExceededError, QuotaUnavailableError) as error:
+                            await self._mark_failed(owner_id, submission.id, error.code)
+                            raise
                         except SupabaseStorageError:
                             await self._mark_failed(
                                 owner_id,

@@ -71,6 +71,6 @@ async def update_assignment_status(
     service: Annotated[AssignmentRubricService, Depends(get_assignment_rubric_service)],
     teacher: Annotated[CurrentAccount, Depends(require_teacher)],
 ) -> AssignmentDetail:
-    """归档或恢复作业；ready 只能由确认 Rubric 原子产生。"""
+    """归档或恢复作业；恢复时按已确认 Rubric 原子恢复为 ready 或 draft。"""
 
     return await service.update_assignment_status(teacher.id, assignment_id, payload)

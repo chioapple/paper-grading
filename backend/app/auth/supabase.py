@@ -52,6 +52,14 @@ class SupabaseAuthGateway:
     async def verify_user_token(self, token: str) -> AuthIdentity:
         """让 Supabase Auth 验证访问令牌并返回可信身份。"""
 
+        if (
+            not token
+            or not token.isascii()
+            or not token.isprintable()
+            or any(character.isspace() for character in token)
+        ):
+            raise SupabaseAuthError("访问令牌无效或已失效")
+
         response = await self._request(
             "GET",
             f"{self._base_url}/auth/v1/user",

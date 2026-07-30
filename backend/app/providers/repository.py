@@ -33,6 +33,10 @@ class SqlAlchemyProviderConfigRepository:
             timeout_seconds=config.timeout_seconds,
             max_concurrency=config.max_concurrency,
             monthly_budget=config.monthly_budget,
+            model_profiles={
+                model: profile.model_dump(mode="json")
+                for model, profile in config.model_profiles.items()
+            },
             status=config.status.value,
             config_version=config.config_version,
             tested_config_version=config.tested_config_version,
@@ -116,6 +120,7 @@ class SqlAlchemyProviderConfigRepository:
                 ProviderConfig.encrypted_api_key.is_not(None),
                 ProviderConfig.api_key_nonce.is_not(None),
                 ProviderConfig.default_model.is_not(None),
+                ProviderConfig.model_profiles.op("?")(ProviderConfig.default_model),
                 ProviderConfig.tested_at.is_not(None),
                 ProviderConfig.tested_config_version == ProviderConfig.config_version,
             )
@@ -149,7 +154,10 @@ class SqlAlchemyProviderConfigRepository:
         rows = (
             await self._session.scalars(
                 select(ProviderConfig)
-                .where(ProviderConfig.status == "enabled")
+                .where(
+                    ProviderConfig.status == "enabled",
+                    ProviderConfig.model_profiles.op("?")(ProviderConfig.default_model),
+                )
                 .order_by(ProviderConfig.name)
             )
         ).all()

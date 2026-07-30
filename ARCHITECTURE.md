@@ -11,13 +11,18 @@ flowchart TD
     API --> DB[Supabase PostgreSQL]
     API --> STORAGE[Supabase Storage]
     API --> REDIS[Redis]
-    REDIS --> WORKER[Celery Worker]
+    REDIS --> WORKER[评分与维护 Worker]
+    REDIS --> EXPORT_WORKER[独立导出 Worker]
+    REDIS -. 待确认后启用 .-> RETENTION_WORKER[独立保留 Worker]
+    REDIS -. 待确认后启用 .-> BACKUP_WORKER[独立备份 Worker]
     WORKER --> PROVIDERS[模型适配层]
     PROVIDERS --> CN[DeepSeek / Kimi / GLM]
     PROVIDERS --> GLOBAL[OpenAI / Anthropic / Gemini]
     PROVIDERS --> COMPAT[OpenAI-compatible API]
     WORKER --> DB
     WORKER --> STORAGE
+    EXPORT_WORKER --> DB
+    EXPORT_WORKER --> STORAGE
 ```
 
 ## 2. 模块职责
@@ -33,8 +38,10 @@ flowchart TD
 | `frontend/src/features/assignments/` | 作业列表、创建、本地文本导入和阶段 6 前端流程测试 |
 | `frontend/src/features/rubrics/` | Rubric 生成、确认、历史版本和结构化结果界面 |
 | `frontend/src/features/submissions/` | 论文选择、客户端批次预检、逐文件上传、状态列表和短时下载入口 |
+| `frontend/src/features/jobs/` | 教师自己的批次、进度、论文队列和批量确认入口 |
+| `frontend/src/features/reviews/` | 桌面三栏/手机标签复核、逐字证据定位、精确分数预览和教师确认流程 |
 | `backend/app/api/` | 对外 HTTP 接口、参数校验和权限入口 |
-| `backend/app/config.py` | 显式校验运行环境和 PostgreSQL 连接配置 |
+| `backend/app/config.py` | 显式校验运行环境、PostgreSQL 和 Redis 连接配置 |
 | `backend/app/db.py` | 创建有上限的应用连接池和异步数据库会话 |
 | `backend/app/readiness.py` | 执行有超时限制的数据库就绪探针 |
 | `backend/app/auth/` | 在线验证 Supabase 会话、合并 profile 状态、管理邀请与唯一管理员引导 |
@@ -48,11 +55,17 @@ flowchart TD
 | `backend/app/submissions/` | 论文去重预留、RLS 仓储、解析状态机、失败重试和对象补偿 |
 | `backend/app/grading/` | 构建版本化提示词、隔离不可信正文、校验证据并确定性计算总分 |
 | `backend/scripts/` | 只用于受控验收的本地脚本；不承载生产请求逻辑 |
-| `backend/app/workers/` | Celery 批量调度、幂等、重试和状态更新 |
-| `backend/app/export/` | 生成草稿和最终成绩 Excel |
-| `infra/` | Render、Supabase Storage、健康检查和维护任务配置；当前只落地前端与 API Blueprint |
+| `backend/app/workers/` | 批次 API 用例、PostgreSQL 状态仓库、Celery 分发、原子 claim、租约、重试和进度收口 |
+| `backend/app/reviews/` | 教师复核安全投影、严格评分重验、RLS 仓储、草稿、原子确认和原模型重评编排 |
+| `backend/app/export/` | 导出 API 用例、不可变快照、独立 Celery 队列、租约状态机和四工作表 Excel 生成 |
+| `backend/app/monitoring/` | 数据库与 Storage 配额计算、事务门禁、字节预留和稳定错误状态 |
+| `backend/app/maintenance/` | 默认关闭的保留状态机，以及目标无关的加密备份和恢复接口 |
+| `frontend/src/features/exports/` | 草稿/最终导出选择、状态轮询、失败说明、历史列表和短时下载入口 |
+| `infra/` | Render 前端、API、Background Worker、Key Value、Supabase Storage 和维护任务配置 |
 | `docs/design/` | App Shell 概念图和可执行视觉规范 |
-| `e2e/` | 管理员与教师的浏览器全流程测试 |
+| `e2e/` | 本地 `/mock` 与显式授权真实环境分离的管理员、教师浏览器全流程测试 |
+| `.github/workflows/ci.yml` | 严格串行执行格式、类型、测试、迁移、构建、浏览器和密钥扫描，不执行部署 |
+| `docs/runbooks/` | 部署、回滚、冒烟、监控、故障和备份恢复操作边界 |
 
 ## 3. 核心数据流
 
@@ -80,7 +93,7 @@ flowchart TD
 
 1. 管理员提交供应商、Base URL、Key、允许模型、默认模型、超时、并发和预算。
 2. 后端把 Key 与供应商 UUID 绑定后使用 AES-256-GCM 加密；API 只返回“已配置”状态。
-3. 连接测试按精确模型能力执行：支持模型列表时只读核验 Key 和默认模型；未声明支持时用合成内容执行一次计费冒烟。自定义地址必须解析到公网，并把 TCP 连接固定到已校验 IP。
+3. 连接测试按精确模型能力执行：支持模型列表时只读核验 Key 和默认模型；未声明支持时用合成内容执行一次计费冒烟。自定义地址必须解析到公网，并把 TCP 连接固定到已校验 IP。本地开发可经显式开关只为内置官方域名临时允许 VPN 的 `198.18.0.0/15` fake-IP；生产、自定义地址和其他非公网地址始终拒绝。
 4. 测试结果绑定当前 `config_version`；Base URL、Key、模型或超时变化时，数据库触发器自动清除测试并改回草稿。
 5. 只有当前配置测试通过后才能启用；教师目录只返回已启用配置的允许模型。
 
@@ -90,17 +103,32 @@ flowchart TD
 2. 后端流式预检真实格式和 20MB 上限，计算 SHA-256，并按作业去重。
 3. 原文件写入私有 Supabase Storage；解析器生成带页码/段落和真实坐标的规范文本块，再写入版本化 JSON 对象。
 4. 数据库只保存元数据、状态和服务端生成的对象路径；下载前先经过教师归属与 ready 状态检查，再签发短时 URL。
-5. 阶段 10 由 API 建立评分批次，并将每篇 ready 论文交给 Celery。
-6. Worker 按批次保存的供应商配置版本、模型、能力、价格和 Schema 快照选择唯一适配器；失败不遍历其他供应商或模型。
-7. 初次和唯一一次纠正都复用同一不可变评分快照；论文与旧模型响应只作为不可信 JSON 数据传入。
-8. 模型结果通过 Schema、维度、步长、扣分和逐字证据校验；模型不能返回总分或扣分值。
-9. 后端计算 `max(0, 维度小计 - 固定扣分)`，保存小计、扣分合计、总分和审计哈希；教师复核后生成最终成绩版本。
+5. API 在教师 RLS 事务中锁定 ready 作业和确认 Rubric，校验 1–100 篇 ready 论文，保存不可变批次快照后再投递 Celery。
+6. Redis 消息只包含 item UUID 和单调版本；真实评分进入 `paper_grading.grading`，周期补发与租约检查进入 `paper_grading.maintenance`。Supervisor 启动两个独立 Worker 进程分别消费两条队列，维护任务还有 25 秒硬超时，因此不会占用评分执行槽；PostgreSQL 才是任务状态和进度事实源。
+7. Worker 先用专用 `NOLOGIN/NOBYPASSRLS` 角色原子 claim，再按批次保存的供应商配置版本、模型、能力、价格和 Schema 快照调用唯一适配器。
+8. 重复消息或旧版本消息不能取得 claim；调用开始后 Worker 丢失或网络结果不明时进入 `needs_review`，不自动再次计费。
+9. 只有明确未计费的 408、429 和 5xx 能按同一模型快照自动重试；首次结构失败只允许一次同快照纠正。
+10. `grading-prompt.v3` 明确要求所有评分理由、扣分理由、修改建议和总体反馈使用英文，并把非英文 Rubric/作业文字翻译或释义后再写入叙述字段；模型结果还必须通过 Schema、英文脚本、维度、步长、扣分和逐字证据校验。提示词构建器保留 v1/v2/v3 的精确规则与哈希重建能力。后端计算 `max(0, 维度小计 - 固定扣分)` 并保存原始响应对象、哈希、用量和费用状态。
+11. AI 成功结果仍进入 `needs_review`；阶段 11 教师确认后才生成 `completed` 和最终成绩版本。
+
+### 教师复核
+
+1. `/grading-jobs` 只列出当前教师自己的批次、论文名、进度和复核指针，不要求浏览器输入 UUID。
+2. 详情从私有 Storage 读取归属已核验的规范文本，只投影 Rubric、文本块、AI 分项结果和当前教师草稿；对象路径、原始响应、哈希、请求 ID、Token 和费用不进入响应。
+3. 教师输入重新通过阶段 8 的英文叙述、维度、步长、上限、扣分和逐字证据校验；总分由后端 Decimal 计算，浏览器只显示预览。
+4. AI attempt 永不覆盖；草稿按 attempt 绑定并单调修订，新 attempt 会使旧草稿冲突。修改 AI 结果必须填写原因。
+5. 教师无任务表更新和审计写权限。保存和确认仅通过固定空 `search_path` 的私有 `SECURITY DEFINER` 函数执行。
+6. 单篇和批量确认在事务内重验归属、attempt、Rubric、论文状态和修订；批量全有或全无，重复确认返回同一结果。
+7. 确认把论文从 `needs_review` 原子变为 `completed`；最后一篇确认时批次同时完成并写结束时间和只追加审计。confirmed review 不可修改、删除或再次重评。
+8. `needs_review` 可能来自成功评分，也可能来自未知或失败调用。队列用 `review_available` 明确区分：成功 current-round attempt 才能进入详情；否则只允许经过费用确认的原模型重评，并继续复用批次固定快照。
 
 ### 导出
 
-1. 教师选择草稿或最终成绩导出。
-2. 后端检查复核状态。
-3. 导出模块生成 Excel 并记录审计信息。
+1. 教师针对一个明确评分批次选择草稿或最终导出；最终导出要求每篇都有 confirmed review。
+2. 数据库函数在单一事务内核验归属和当前来源，并把批次信息及每篇 attempt/review/result 冻结到 `exports` 与 `export_items`。
+3. API 只向独立 `paper_grading.exports` 队列发送 export ID；导出 Worker 不读取实时评分表，也不持有供应商主密钥。
+4. Worker 用有时限的令牌原子领取，生成无公式、无外部链接的四工作表 Excel，私有 Storage 上传成功且文件哈希一致后才完成；连续软超时或三次进程丢失由数据库审计计数收口为明确失败，避免永久运行。
+5. 教师下载前再次经过归属与 RLS 检查，API 只签发短时 URL 和安全文件名，不暴露对象路径或文件哈希。
 
 ## 4. 关键设计决定
 
@@ -124,9 +152,15 @@ DeepSeek、Kimi 和 GLM 虽提供兼容接口，但结构化输出、温度、�
 
 数据库只保存账户、元数据、精简评分和审计记录；论文、提取文本和原始模型响应进入私有 Supabase Storage，以控制 PostgreSQL 容量。数据库灾备不能与主数据库放在同一个 Supabase 项目，阶段 13 另定独立备份目标。
 
+### Redis 只传消息，PostgreSQL 保存任务事实
+
+Celery 可以重复投递或丢失消息，因此消息本身不能代表论文状态。每次供应商调用必须先取得 PostgreSQL 原子 claim；批次计数、暂停、继续、取消、重试、租约和 SSE 全部重新读取数据库。评分与维护使用独立队列并轮转消费；维护消息每 30 秒产生一次，25 秒内未开始即失效，避免数据库冷连接慢于调度周期时形成永久积压。Redis 不保存论文正文、供应商 Key 或模型快照。
+
+Excel 导出使用独立 Celery 应用、队列、数据库登录角色和 Render 服务；进程只接收 `EXPORT_DATABASE_URL`，不持有通用 postgres 凭据。创建事务冻结模型参数、Rubric、attempt/review 来源与逐篇结果；Worker 只读冻结表。同一快照的生成时间、工作簿属性和 ZIP 成员固定，因此重领可复用同一路径和 SHA-256。失租 Worker 只有在数据库仍接受其令牌并先转为 failed 后，才可删除本次刚创建的同哈希对象。
+
 ### 迁移与应用连接严格分开
 
-Alembic 是唯一迁移事实源，已经发布的迁移不原地改写。阶段 2 基线是 `20260713_0002`，安全收尾使用前向迁移 `20260714_0003`；阶段 3 使用 `0004`、`0005`，阶段 4 使用 `0006`，阶段 5 使用 `0007`，阶段 6 使用 `0008`，阶段 7 使用 `0009`，阶段 8 使用 `0010` 保存评分契约快照，阶段 9 使用 `0011` 锁定供应商配置版本、Schema 正文和原始响应哈希。应用使用有上限的持久连接池；生产部署通过启用 SSL 的 Supavisor session pooler 5432 访问数据库。迁移只读取启用 SSL 的 direct 连接地址，且从支持 IPv6 的受控环境运行；不回退到应用连接池地址，也不把迁移凭据注入 Render API。真实破坏性验收另用 `TEST_MIGRATION_DATABASE_URL`，禁止复用部署迁移库。
+Alembic 是唯一迁移事实源，已经执行的迁移不原地改写。阶段 2 基线是 `20260713_0002`，安全收尾使用前向迁移 `20260714_0003`；阶段 3 使用 `0004`、`0005`，阶段 4 使用 `0006`，阶段 5 使用 `0007`，阶段 6 使用 `0008`，阶段 7 使用 `0009`，阶段 8 使用 `0010` 保存评分契约快照，阶段 9 使用 `0011` 锁定供应商配置版本、Schema 正文和原始响应哈希，阶段 10 使用 `0012` 建立批次状态、Worker 权限、租约、重试和完整 attempt 审计，`0013` 删除教师只读批次校验中的多余行锁，`0014` 分开处理两张触发表的延迟完整性记录字段；阶段 11 使用 `0015` 保存独立扣分与精确总分并建立最小权限原子复核函数，`0016` 保证部分确认时仍含排队或运行中论文的批次保持可调度；阶段 12 使用 `0017` 建立不可变导出快照、最小权限函数和租约状态机；阶段 13 使用 `0018` 建立默认关闭的配额、保留、备份和恢复审计基础；阶段 14 使用 `0019` 允许既有最小评分 Worker 角色登录并执行 Storage 配额预留/收口，不增加表权限，密码仍由部署者在仓库外设置。应用使用有上限的持久连接池；生产部署通过启用 SSL 的 Supavisor session pooler 5432 访问数据库。迁移只读取启用 SSL 的 direct 连接地址，且从支持 IPv6 的受控环境运行；不回退到应用连接池地址，也不把迁移凭据注入 Render API。真实验收同样分离连接：`TEST_MIGRATION_DATABASE_URL` 只做 Alembic 回放，`TEST_DATABASE_URL` 使用同一测试项目的 Supavisor Session Pooler 5432 执行权限、RLS 和事务契约。
 
 ### 身份与历史记录由数据库兜底
 
@@ -151,4 +185,4 @@ Supabase Auth 配置负责关闭注册入口，数据库触发器再用 `auth.us
 
 ## 6. 当前状态
 
-阶段 1 至阶段 9 已完成。七类模型适配器、迁移 `20260716_0011`、DeepSeek 真实评分冒烟和阶段 9 全部验收均已通过；下一步进入阶段 10。
+阶段 1 至阶段 13 已完成。阶段 14 本地开发与自动化证据已完成；前向迁移 `20260728_0019` 允许既有 `paper_grading_worker` 最小角色登录并执行两个 Storage 配额函数，不增加表权限，生产密码由部署者在仓库外设置。独立 Supabase/Redis、真实模型、100 篇、Render、生产 HTTPS/告警/回滚和独立恢复证据尚未取得，阶段 14 保持进行中。自动清理、备份创建和备份清理继续关闭。

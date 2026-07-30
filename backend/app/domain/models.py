@@ -141,6 +141,7 @@ class ProviderConfig(Base):
             name="default_model",
         ),
         CheckConstraint("jsonb_typeof(allowed_models) = 'array'", name="allowed_models"),
+        CheckConstraint("jsonb_typeof(model_profiles) = 'object'", name="model_profiles"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -160,6 +161,9 @@ class ProviderConfig(Base):
     )
     max_concurrency: Mapped[int] = mapped_column(nullable=False, server_default=text("'1'"))
     monthly_budget: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    model_profiles: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
     config_version: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default=text("'1'")
@@ -388,6 +392,8 @@ class GradingJob(Base):
         CheckConstraint(
             "provider_config_version > 0 and btrim(model) <> '' "
             "and jsonb_typeof(result_schema) = 'object' "
+            "and octet_length(request_hash) = 32 "
+            "and octet_length(model_parameters_hash) = 32 "
             "and btrim(prompt_version) <> '' "
             "and octet_length(prompt_hash) = 32 "
             "and btrim(result_schema_version) <> '' "
@@ -395,6 +401,15 @@ class GradingJob(Base):
             "and octet_length(rubric_hash) = 32 "
             "and btrim(idempotency_key) <> ''",
             name="snapshot",
+        ),
+        CheckConstraint(
+            "expected_item_count between 1 and 100 and state_version > 0",
+            name="progress",
+        ),
+        CheckConstraint(
+            "btrim(assignment_title_snapshot) <> '' "
+            "and btrim(assignment_instructions_snapshot) <> ''",
+            name="assignment_snapshot",
         ),
         CheckConstraint(
             "jsonb_typeof(model_parameters) = 'object'",
@@ -430,10 +445,15 @@ class GradingJob(Base):
         Uuid, ForeignKey("provider_configs.id", ondelete="RESTRICT"), nullable=False
     )
     provider_config_version: Mapped[int] = mapped_column(nullable=False)
+    assignment_title_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    assignment_instructions_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_item_count: Mapped[int] = mapped_column(nullable=False)
+    request_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     model: Mapped[str] = mapped_column(Text, nullable=False)
     model_parameters: Mapped[dict[str, object]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
+    model_parameters_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     result_schema_version: Mapped[str] = mapped_column(Text, nullable=False)
@@ -442,9 +462,15 @@ class GradingJob(Base):
     rubric_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
+    state_version: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("'1'")
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -469,6 +495,24 @@ class GradingJobItem(Base):
         ),
         enum_check("status", GradingItemStatus, "status"),
         CheckConstraint("position >= 0", name="position"),
+        CheckConstraint("dispatch_version > 0 and retry_count >= 0", name="delivery"),
+        CheckConstraint(
+            "(status = 'queued' and finished_at is null and lease_token is null "
+            "and lease_expires_at is null and error_code is null) or "
+            "(status = 'running' and started_at is not null and finished_at is null "
+            "and lease_token is not null and lease_expires_at is not null "
+            "and error_code is null) or "
+            "(status = 'needs_review' and finished_at is not null "
+            "and lease_token is null and lease_expires_at is null "
+            "and (error_code is null or btrim(error_code) <> '')) or "
+            "(status = 'completed' and finished_at is not null "
+            "and lease_token is null and lease_expires_at is null and error_code is null) or "
+            "(status = 'failed' and finished_at is not null and lease_token is null "
+            "and lease_expires_at is null and btrim(error_code) <> '') or "
+            "(status = 'cancelled' and finished_at is not null and lease_token is null "
+            "and lease_expires_at is null)",
+            name="state",
+        ),
         Index("grading_job_items_owner_status_created_idx", "owner_id", "status", "created_at"),
         Index(
             "grading_job_items_job_assignment_owner_idx",
@@ -483,6 +527,19 @@ class GradingJobItem(Base):
             "owner_id",
         ),
         Index("grading_job_items_job_status_position_idx", "grading_job_id", "status", "position"),
+        Index(
+            "grading_job_items_dispatch_idx",
+            "available_at",
+            "created_at",
+            "id",
+            postgresql_where=text("status = 'queued'"),
+        ),
+        Index(
+            "grading_job_items_expired_lease_idx",
+            "lease_expires_at",
+            "id",
+            postgresql_where=text("status = 'running'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -496,7 +553,22 @@ class GradingJobItem(Base):
     submission_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     position: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
+    dispatch_version: Mapped[int] = mapped_column(nullable=False, server_default=text("'1'"))
+    retry_count: Mapped[int] = mapped_column(nullable=False, server_default=text("'0'"))
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    lease_token: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
@@ -508,14 +580,34 @@ class GradingAttempt(Base):
     __table_args__ = (
         UniqueConstraint("id", "grading_job_item_id", "owner_id"),
         UniqueConstraint("grading_job_item_id", "attempt_number"),
+        UniqueConstraint("grading_job_item_id", "scoring_round", "call_sequence"),
         UniqueConstraint("owner_id", "idempotency_key"),
         ForeignKeyConstraint(
             ["grading_job_item_id", "owner_id"],
             ["grading_job_items.id", "grading_job_items.owner_id"],
             ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["parent_attempt_id", "grading_job_item_id", "owner_id"],
+            [
+                "grading_attempts.id",
+                "grading_attempts.grading_job_item_id",
+                "grading_attempts.owner_id",
+            ],
+            ondelete="RESTRICT",
+            name="grading_attempts_parent_item_owner_fkey",
+        ),
         enum_check("status", GradingAttemptStatus, "status"),
         CheckConstraint("attempt_number > 0", name="attempt_number"),
+        CheckConstraint("scoring_round > 0 and call_sequence > 0", name="call_position"),
+        CheckConstraint(
+            "attempt_kind in ('initial', 'correction', 'automatic_retry', 'manual_retry')",
+            name="attempt_kind",
+        ),
+        CheckConstraint(
+            "provider_call_state in ('started', 'not_sent', 'response_received', 'ambiguous')",
+            name="provider_call_state",
+        ),
         CheckConstraint(
             "max_score > 0 and (total_score is null or "
             "(total_score >= 0 and total_score <= max_score))",
@@ -531,6 +623,31 @@ class GradingAttempt(Base):
             name="criteria_results",
         ),
         CheckConstraint(
+            "deduction_results is null or jsonb_typeof(deduction_results) = 'array'",
+            name="deduction_results",
+        ),
+        CheckConstraint(
+            "error_details is null or jsonb_typeof(error_details) = 'object'",
+            name="error_details",
+        ),
+        CheckConstraint(
+            "(input_tokens is null and cached_input_tokens is null "
+            "and cache_write_input_tokens is null and output_tokens is null "
+            "and reasoning_tokens is null and total_tokens is null) or "
+            "(input_tokens >= 0 and cached_input_tokens >= 0 "
+            "and cache_write_input_tokens >= 0 and output_tokens >= 0 "
+            "and reasoning_tokens >= 0 and (total_tokens is null or total_tokens >= 0) "
+            "and cached_input_tokens + cache_write_input_tokens <= input_tokens "
+            "and reasoning_tokens <= output_tokens)",
+            name="token_usage",
+        ),
+        CheckConstraint(
+            "(estimated_cost_amount is null and cost_currency is null and tariff_version is null) "
+            "or (estimated_cost_amount >= 0 and cost_currency ~ '^[A-Z]{3}$' "
+            "and btrim(tariff_version) <> '')",
+            name="cost",
+        ),
+        CheckConstraint(
             "((raw_response_object_key is null) = (raw_response_sha256 is null)) "
             "and (raw_response_sha256 is null or octet_length(raw_response_sha256) = 32)",
             name="raw_response",
@@ -538,13 +655,36 @@ class GradingAttempt(Base):
         CheckConstraint(
             "(status = 'running' and finished_at is null) or "
             "(status in ('succeeded', 'needs_review') and finished_at is not null "
-            "and total_score is not null and criteria_results is not null "
-            "and overall_feedback is not null and raw_response_object_key is not null) or "
+            "and provider_call_state = 'response_received' and total_score is not null "
+            "and subtotal is not null and deduction_total is not null "
+            "and total_score = greatest(0, subtotal - deduction_total) "
+            "and criteria_results is not null and deduction_results is not null "
+            "and overall_feedback is not null and raw_response_object_key is not null "
+            "and provider_request_id is not null and reported_model is not null "
+            "and input_tokens is not null) or "
             "(status = 'failed' and finished_at is not null and error_code is not null)",
             name="result",
         ),
         Index("grading_attempts_owner_status_created_idx", "owner_id", "status", "created_at"),
         Index("grading_attempts_item_owner_idx", "grading_job_item_id", "owner_id"),
+        Index(
+            "grading_attempts_parent_item_owner_idx",
+            "parent_attempt_id",
+            "grading_job_item_id",
+            "owner_id",
+        ),
+        Index(
+            "grading_attempts_one_running_idx",
+            "grading_job_item_id",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
+        Index(
+            "grading_attempts_raw_response_object_key_idx",
+            "raw_response_object_key",
+            unique=True,
+            postgresql_where=text("raw_response_object_key is not null"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -554,20 +694,49 @@ class GradingAttempt(Base):
         Uuid, ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False
     )
     grading_job_item_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    parent_attempt_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     attempt_number: Mapped[int] = mapped_column(nullable=False)
+    scoring_round: Mapped[int] = mapped_column(nullable=False)
+    call_sequence: Mapped[int] = mapped_column(nullable=False)
+    attempt_kind: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'running'"))
+    provider_call_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    provider_call_state: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'started'")
+    )
     request_version: Mapped[str] = mapped_column(Text, nullable=False)
     request_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     max_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     total_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    subtotal: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    deduction_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     criteria_results: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    deduction_results: Mapped[list[dict[str, object]] | None] = mapped_column(
         JSONB(none_as_null=True), nullable=True
     )
     overall_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_response_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_response_sha256: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reported_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cached_input_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cache_write_input_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reasoning_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    estimated_cost_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 9), nullable=True)
+    cost_currency: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tariff_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_details: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -593,20 +762,24 @@ class TeacherReview(Base):
         enum_check("status", TeacherReviewStatus, "status"),
         CheckConstraint("revision_number > 0", name="revision_number"),
         CheckConstraint(
-            "max_score > 0 and (final_score is null or "
-            "(final_score >= 0 and final_score <= max_score))",
+            "max_score > 0 and final_score >= 0 and final_score <= max_score",
             name="score_range",
         ),
         CheckConstraint(
             "(status = 'draft' and confirmed_at is null) or "
-            "(status = 'confirmed' and confirmed_at is not null and final_score is not null "
-            "and criteria_results is not null and feedback is not null)",
+            "(status = 'confirmed' and confirmed_at is not null)",
             name="confirmation",
         ),
         CheckConstraint(
-            "(criteria_results is null or jsonb_typeof(criteria_results) = 'array') "
+            "jsonb_typeof(criteria_results) = 'array' "
+            "and jsonb_typeof(deduction_results) = 'array' "
             "and jsonb_typeof(evidence) = 'array'",
             name="json_shapes",
+        ),
+        CheckConstraint(
+            "subtotal >= 0 and deduction_total >= 0 "
+            "and final_score = greatest(0, subtotal - deduction_total)",
+            name="totals",
         ),
         Index("teacher_reviews_owner_status_created_idx", "owner_id", "status", "created_at"),
         Index(
@@ -616,6 +789,7 @@ class TeacherReview(Base):
             "owner_id",
         ),
         Index("teacher_reviews_item_owner_idx", "grading_job_item_id", "owner_id"),
+        Index("teacher_reviews_one_attempt_idx", "grading_attempt_id", unique=True),
         Index(
             "teacher_reviews_one_confirmed_idx",
             "grading_job_item_id",
@@ -635,11 +809,14 @@ class TeacherReview(Base):
     revision_number: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
     max_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
-    final_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
-    criteria_results: Mapped[list[dict[str, object]] | None] = mapped_column(
-        JSONB(none_as_null=True), nullable=True
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    deduction_total: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    final_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    criteria_results: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
+    deduction_results: Mapped[list[dict[str, object]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
-    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    feedback: Mapped[str] = mapped_column(Text, nullable=False)
     evidence: Mapped[list[dict[str, object]]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
@@ -691,6 +868,7 @@ class Export(Base):
 
     __tablename__ = "exports"
     __table_args__ = (
+        UniqueConstraint("id", "owner_id", "grading_job_id"),
         UniqueConstraint("owner_id", "idempotency_key"),
         ForeignKeyConstraint(
             ["assignment_id", "owner_id"],
@@ -705,13 +883,40 @@ class Export(Base):
         enum_check("export_type", ExportType, "export_type"),
         enum_check("status", ExportStatus, "status"),
         CheckConstraint(
-            "btrim(idempotency_key) <> '' and "
-            "((status = 'completed' and object_key is not null and finished_at is not null) or "
-            "(status = 'failed' and error_code is not null and finished_at is not null) or "
-            "(status in ('queued', 'running') and finished_at is null))",
+            "btrim(idempotency_key) <> '' and octet_length(request_hash) = 32 "
+            "and btrim(workbook_schema_version) <> '' "
+            "and jsonb_typeof(audit_metadata) = 'object'",
+            name="request_snapshot",
+        ),
+        CheckConstraint(
+            "(status = 'queued' and started_at is null and claim_token is null "
+            "and lease_expires_at is null and object_key is null and safe_filename is null "
+            "and file_size_bytes is null and file_sha256 is null and error_code is null "
+            "and finished_at is null) or "
+            "(status = 'running' and started_at is not null and claim_token is not null "
+            "and lease_expires_at is not null and object_key is null and safe_filename is null "
+            "and file_size_bytes is null and file_sha256 is null and error_code is null "
+            "and finished_at is null) or "
+            "(status = 'completed' and started_at is not null and claim_token is null "
+            "and lease_expires_at is null and object_key is not null "
+            "and safe_filename is not null and file_size_bytes > 0 "
+            "and octet_length(file_sha256) = 32 and error_code is null "
+            "and finished_at is not null) or "
+            "(status = 'failed' and started_at is not null and claim_token is null "
+            "and lease_expires_at is null and object_key is null and safe_filename is null "
+            "and file_size_bytes is null and file_sha256 is null "
+            "and error_code ~ '^[a-z][a-z0-9_]{0,127}$' and finished_at is not null)",
             name="result",
         ),
-        CheckConstraint("jsonb_typeof(audit_metadata) = 'object'", name="audit_metadata"),
+        CheckConstraint(
+            "object_key is null or object_key = 'exports/' || id::text || '/workbook.xlsx'",
+            name="object_key",
+        ),
+        CheckConstraint(
+            "safe_filename is null or (char_length(safe_filename) between 6 and 255 "
+            "and safe_filename like '%.xlsx' and safe_filename !~ '[/\\\\]')",
+            name="safe_filename",
+        ),
         Index("exports_owner_status_created_idx", "owner_id", "status", "created_at"),
         Index("exports_assignment_owner_idx", "assignment_id", "owner_id"),
         Index(
@@ -719,6 +924,19 @@ class Export(Base):
             "grading_job_id",
             "assignment_id",
             "owner_id",
+        ),
+        Index(
+            "exports_dispatch_idx",
+            "status",
+            "lease_expires_at",
+            "created_at",
+            postgresql_where=text("status in ('queued', 'running')"),
+        ),
+        Index(
+            "exports_object_key_idx",
+            "object_key",
+            unique=True,
+            postgresql_where=text("object_key is not null"),
         ),
     )
 
@@ -737,8 +955,126 @@ class Export(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    request_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    workbook_schema_version: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_token: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    safe_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    file_sha256: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ExportItem(Base):
+    """导出创建时冻结的单篇结果，不由 Worker 回读实时评分表补字段。"""
+
+    __tablename__ = "export_items"
+    __table_args__ = (
+        UniqueConstraint("export_id", "position"),
+        UniqueConstraint("export_id", "grading_job_item_id"),
+        ForeignKeyConstraint(
+            ["export_id", "owner_id", "grading_job_id"],
+            ["exports.id", "exports.owner_id", "exports.grading_job_id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["grading_job_item_id", "owner_id"],
+            ["grading_job_items.id", "grading_job_items.owner_id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["submission_id", "assignment_id", "owner_id"],
+            ["submissions.id", "submissions.assignment_id", "submissions.owner_id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["grading_attempt_id", "grading_job_item_id", "owner_id"],
+            [
+                "grading_attempts.id",
+                "grading_attempts.grading_job_item_id",
+                "grading_attempts.owner_id",
+            ],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["teacher_review_id"],
+            ["teacher_reviews.id"],
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("position >= 0", name="position"),
+        CheckConstraint(
+            "source_type in ('ai_suggestion', 'teacher_draft', 'teacher_confirmed')",
+            name="source_type",
+        ),
+        CheckConstraint(
+            "(source_type = 'ai_suggestion' and teacher_review_id is null "
+            "and review_revision is null) or "
+            "(source_type in ('teacher_draft', 'teacher_confirmed') "
+            "and teacher_review_id is not null and review_revision > 0)",
+            name="review_source",
+        ),
+        CheckConstraint(
+            "char_length(original_filename) between 1 and 255 and btrim(original_filename) <> ''",
+            name="original_filename",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(result_snapshot) = 'object' "
+            "and result_snapshot ->> 'schema_version' = 'export-item-snapshot.v1'",
+            name="result_snapshot",
+        ),
+        Index("export_items_owner_created_idx", "owner_id", "created_at"),
+        Index("export_items_export_position_idx", "export_id", "position"),
+        Index(
+            "export_items_export_owner_job_idx",
+            "export_id",
+            "owner_id",
+            "grading_job_id",
+        ),
+        Index("export_items_job_owner_idx", "grading_job_id", "owner_id"),
+        Index("export_items_item_owner_idx", "grading_job_item_id", "owner_id"),
+        Index(
+            "export_items_submission_assignment_owner_idx",
+            "submission_id",
+            "assignment_id",
+            "owner_id",
+        ),
+        Index(
+            "export_items_attempt_item_owner_idx",
+            "grading_attempt_id",
+            "grading_job_item_id",
+            "owner_id",
+        ),
+        Index("export_items_review_idx", "teacher_review_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    export_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    owner_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False
+    )
+    assignment_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    grading_job_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    grading_job_item_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    submission_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    grading_attempt_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    teacher_review_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    review_revision: Mapped[int | None] = mapped_column(nullable=True)
+    position: Mapped[int] = mapped_column(nullable=False)
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    original_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    result_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

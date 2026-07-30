@@ -19,7 +19,10 @@ async def bootstrap_admin(*, settings: Settings, email: str, display_name: str) 
 
     database = Database.from_settings(settings)
     try:
-        async with httpx.AsyncClient(timeout=settings.supabase_auth_timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.supabase_auth_timeout_seconds,
+            trust_env=False,
+        ) as client:
             gateway = SupabaseAuthGateway(
                 base_url=settings.supabase_url,
                 publishable_key=settings.supabase_publishable_key,

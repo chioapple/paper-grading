@@ -24,9 +24,6 @@ export const copy = {
     createTitle: "创建新作业",
     createBody: "作业创建流程将在阶段 6 接入。",
     jobsTitle: "批改任务",
-    jobsBody: "批量评分任务将在阶段 10 接入。",
-    exportsTitle: "成绩导出",
-    exportsBody: "成绩导出将在阶段 12 接入。",
     notFoundTitle: "页面不存在",
   },
   en: {
@@ -52,9 +49,6 @@ export const copy = {
     createTitle: "Create a new assignment",
     createBody: "The assignment workflow will be connected in stage 6.",
     jobsTitle: "Grading jobs",
-    jobsBody: "Batch grading will be connected in stage 10.",
-    exportsTitle: "Grade exports",
-    exportsBody: "Grade exports will be connected in stage 12.",
     notFoundTitle: "Page not found",
   },
 } as const;

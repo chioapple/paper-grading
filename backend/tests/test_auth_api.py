@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.auth.dependencies import (
@@ -22,6 +23,7 @@ def build_test_settings() -> Settings:
     return Settings(
         APP_ENV="test",
         DATABASE_URL="postgresql+asyncpg://localhost:5432/paper_grading_test",
+        REDIS_URL=TEST_AUTH_SETTINGS["REDIS_URL"],
         SUPABASE_URL=TEST_AUTH_SETTINGS["SUPABASE_URL"],
         SUPABASE_PUBLISHABLE_KEY=TEST_AUTH_SETTINGS["SUPABASE_PUBLISHABLE_KEY"],
         SUPABASE_SECRET_KEY=TEST_AUTH_SETTINGS["SUPABASE_SECRET_KEY"],
@@ -49,6 +51,37 @@ def test_startup_creates_auth_gateway_and_allows_only_the_frontend_origin() -> N
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+
+
+@pytest.mark.parametrize(
+    ("origin", "method", "headers", "origin_is_allowed"),
+    [
+        ("https://attacker.example", "GET", "authorization", False),
+        ("null", "GET", "authorization", False),
+        ("http://127.0.0.1:5173", "DELETE", "authorization", True),
+        ("http://127.0.0.1:5173", "GET", "x-unapproved-header", True),
+    ],
+)
+def test_cors_rejects_unknown_origins_methods_and_headers(
+    origin: str,
+    method: str,
+    headers: str,
+    origin_is_allowed: bool,
+) -> None:
+    application = create_app(build_test_settings())
+
+    with TestClient(application) as client:
+        response = client.options(
+            "/auth/me",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": headers,
+            },
+        )
+
+    assert response.status_code == 400
+    assert ("access-control-allow-origin" in response.headers) is origin_is_allowed
 
 
 def test_me_returns_the_verified_application_profile() -> None:

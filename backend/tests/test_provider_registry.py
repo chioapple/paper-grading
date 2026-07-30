@@ -1,15 +1,19 @@
 """供应商适配器注册表不得自动换模型或换供应商。"""
 
+from typing import cast
+
 import pytest
 
 from app.domain.enums import ProviderType
 from app.providers.base import (
     ProviderAdapterError,
+    ProviderAdapterHttpClient,
     ProviderCredentialValidation,
     ProviderGradeRequest,
     ProviderGradeResult,
 )
-from app.providers.registry import ProviderAdapterRegistry
+from app.providers.connection import ProviderBaseUrlPolicy
+from app.providers.registry import ProviderAdapterRegistry, build_provider_adapter_registry
 
 
 class SelectedAdapter:
@@ -36,6 +40,17 @@ class UnexpectedFallbackAdapter:
         request: ProviderGradeRequest,
     ) -> ProviderCredentialValidation:
         raise AssertionError("not used")
+
+
+def test_default_registry_covers_every_declared_provider_type() -> None:
+    registry = build_provider_adapter_registry(
+        url_policy=ProviderBaseUrlPolicy(),
+        http_client=cast(ProviderAdapterHttpClient, object()),
+    )
+
+    assert {
+        provider_type for provider_type in ProviderType if registry.require(provider_type)
+    } == set(ProviderType)
 
 
 @pytest.mark.anyio

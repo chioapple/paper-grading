@@ -41,6 +41,19 @@ def test_live_does_not_check_external_dependencies() -> None:
     assert probe.call_count == 0
 
 
+def test_api_responses_include_security_headers() -> None:
+    app = create_app(build_test_settings())
+
+    with TestClient(app) as client:
+        response = client.get("/health/live")
+
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+
+
 def test_ready_reports_available_database() -> None:
     app = create_app(build_test_settings())
     probe = StubReadinessProbe(available=True)

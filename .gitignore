@@ -2,6 +2,7 @@
 .DS_Store
 .idea/
 .vscode/
+.claude/
 *.swp
 
 # 环境变量与密钥
@@ -36,9 +37,10 @@ build/
 logs/
 tmp/
 uploads/
-exports/
+/exports/
 mock/
 celerybeat-schedule*
+stage10_acceptance_guide.md
 
 # 测试与浏览器产物
 .playwright-cli/

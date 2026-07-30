@@ -31,9 +31,9 @@ export const providerCopy: Record<Language, Record<string, string>> = {
     providerType: "供应商类型",
     name: "配置名称",
     baseUrl: "Base URL",
-    apiKey: "API Key",
+    apiKey: "API Key", // pragma: allowlist secret
     apiKeyCreateHint: "仅在保存时发送一次。请勿粘贴到聊天或代码。",
-    apiKeyEditHint: "留空会保留当前 Key，页面无法读取已保存的 Key。",
+    apiKeyEditHint: "留空会保留当前 Key，页面无法读取已保存的 Key。", // pragma: allowlist secret
     allowedModels: "允许模型",
     allowedModelsHint: "每行一个模型，或用英文逗号分隔。",
     defaultModel: "默认模型",
@@ -79,9 +79,9 @@ export const providerCopy: Record<Language, Record<string, string>> = {
     providerType: "Provider type",
     name: "Configuration name",
     baseUrl: "Base URL",
-    apiKey: "API Key",
-    apiKeyCreateHint: "Sent once when saved. Never paste it into chat or source code.",
-    apiKeyEditHint: "Leave blank to keep the current key. Saved keys cannot be read by this page.",
+    apiKey: "API Key", // pragma: allowlist secret
+    apiKeyCreateHint: "Sent once when saved. Never paste it into chat or source code.", // pragma: allowlist secret
+    apiKeyEditHint: "Leave blank to keep the current key. Saved keys cannot be read by this page.", // pragma: allowlist secret
     allowedModels: "Allowed models",
     allowedModelsHint: "Enter one model per line, or separate them with commas.",
     defaultModel: "Default model",

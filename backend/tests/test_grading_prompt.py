@@ -7,10 +7,28 @@ import pytest
 
 from app.domain.grading import GradeResult, canonical_sha256
 from app.domain.rubric import StructuredRubric
-from app.grading.prompt import build_correction_prompt, build_grading_prompt
+from app.grading.prompt import (
+    PromptVersion,
+    build_correction_prompt,
+    build_grading_contract_snapshot,
+    build_grading_prompt,
+)
 from app.grading.validator import GradeValidationError, assess_grade_response
 from app.parsing.models import ParsedDocument
 from tests.test_grading_contract import build_request
+
+
+def test_batch_contract_snapshot_matches_every_submission_prompt() -> None:
+    request = build_request()
+    snapshot = build_grading_contract_snapshot(request.rubric)
+    prompt = build_grading_prompt(request)
+
+    assert snapshot.prompt_version == prompt.prompt_version
+    assert snapshot.prompt_hash == prompt.prompt_hash
+    assert snapshot.result_schema_version == prompt.result_schema_version
+    assert snapshot.result_schema_hash == prompt.result_schema_hash
+    assert snapshot.rubric_hash == prompt.rubric_hash
+    assert canonical_sha256(snapshot.result_schema) == snapshot.result_schema_hash
 
 
 def test_submission_instructions_exist_only_in_untrusted_json_data() -> None:
@@ -38,6 +56,46 @@ def test_submission_instructions_exist_only_in_untrusted_json_data() -> None:
     assert "total_score" not in result_schema["properties"]
     assert result_schema["additionalProperties"] is False
     assert result_schema["$defs"]["DimensionResult"]["properties"]["score"]["type"] == ("string")
+
+
+def test_prompt_requires_every_narrative_field_to_be_written_in_english() -> None:
+    prompt = build_grading_prompt(build_request())
+    system_message = prompt.messages[0].content
+
+    assert prompt.prompt_version == "grading-prompt.v3"
+    assert (
+        "Every dimension reason, deduction reason, revision suggestion, and overall feedback "
+        "must be written in English."
+    ) in system_message
+    assert (
+        "Do not copy non-English rubric names, descriptions, or assignment wording into "
+        "narrative fields"
+    ) in system_message
+    assert (
+        "rewrite the complete narrative field using Latin-script English only"
+    ) in system_message
+
+
+@pytest.mark.parametrize(
+    "prompt_version",
+    ["grading-prompt.v1", "grading-prompt.v2"],
+)
+def test_historical_prompt_snapshot_remains_reconstructible(
+    prompt_version: PromptVersion,
+) -> None:
+    request = build_request()
+    prompt = build_grading_prompt(request, prompt_version=prompt_version)
+    snapshot = build_grading_contract_snapshot(
+        request.rubric,
+        prompt_version=prompt_version,
+    )
+
+    assert prompt.prompt_version == prompt_version
+    assert snapshot.prompt_version == prompt_version
+    assert prompt.prompt_hash == snapshot.prompt_hash
+    assert prompt.result_schema_hash == snapshot.result_schema_hash
+    assert prompt.rubric_hash == snapshot.rubric_hash
+    assert prompt.prompt_hash != build_grading_prompt(request).prompt_hash
 
 
 def test_prompt_schema_rubric_and_request_hashes_have_separate_boundaries() -> None:

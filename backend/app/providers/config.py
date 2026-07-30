@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from app.domain.enums import ProviderStatus, ProviderType
+from app.providers.base import ProviderModelProfile
 from app.providers.connection import (
     OFFICIAL_BASE_URLS,
     ProviderBaseUrlPolicy,
@@ -40,6 +41,16 @@ def _normalize_api_key(value: SecretStr) -> SecretStr:
     return SecretStr(normalized)
 
 
+def _validate_model_profiles(
+    allowed_models: list[str],
+    model_profiles: dict[str, ProviderModelProfile],
+) -> None:
+    allowed = set(allowed_models)
+    for model, profile in model_profiles.items():
+        if model not in allowed or profile.capabilities.model != model:
+            raise ValueError("模型能力快照必须与允许模型和映射键一致")
+
+
 class ProviderConfigCreate(BaseModel):
     """管理员创建供应商配置所需字段。"""
 
@@ -59,6 +70,7 @@ class ProviderConfigCreate(BaseModel):
         max_digits=12,
         decimal_places=2,
     )
+    model_profiles: dict[str, ProviderModelProfile] = Field(default_factory=dict, max_length=100)
 
     @field_validator("name", "default_model")
     @classmethod
@@ -92,6 +104,7 @@ class ProviderConfigCreate(BaseModel):
     def validate_default_model(self) -> Self:
         if self.default_model not in self.allowed_models:
             raise ValueError("默认模型必须包含在允许模型中")
+        _validate_model_profiles(self.allowed_models, self.model_profiles)
         return self
 
 
@@ -120,6 +133,7 @@ class ProviderConfigUpdate(BaseModel):
         max_digits=12,
         decimal_places=2,
     )
+    model_profiles: dict[str, ProviderModelProfile] | None = Field(default=None, max_length=100)
 
     @field_validator("name", "default_model")
     @classmethod
@@ -166,6 +180,7 @@ class ProviderConfigUpdateValues(BaseModel):
     timeout_seconds: Decimal
     max_concurrency: int
     monthly_budget: Decimal | None
+    model_profiles: dict[str, ProviderModelProfile]
 
 
 class StoredProviderConfig(BaseModel):
@@ -184,6 +199,7 @@ class StoredProviderConfig(BaseModel):
     timeout_seconds: Decimal
     max_concurrency: int
     monthly_budget: Decimal | None
+    model_profiles: dict[str, ProviderModelProfile] = Field(default_factory=dict)
     status: ProviderStatus
     config_version: int
     tested_config_version: int | None
@@ -205,6 +221,8 @@ class ProviderConfigView(BaseModel):
     timeout_seconds: Decimal
     max_concurrency: int
     monthly_budget: Decimal | None
+    model_profiles: dict[str, ProviderModelProfile] = Field(default_factory=dict)
+    grading_ready: bool = False
     status: ProviderStatus
     configuration_tested: bool
     can_enable: bool
@@ -216,6 +234,9 @@ class ProviderConfigView(BaseModel):
     def from_stored(cls, config: StoredProviderConfig) -> ProviderConfigView:
         configuration_tested = (
             config.tested_at is not None and config.tested_config_version == config.config_version
+        )
+        grading_ready = (
+            config.default_model is not None and config.default_model in config.model_profiles
         )
         return cls(
             id=config.id,
@@ -230,6 +251,8 @@ class ProviderConfigView(BaseModel):
             timeout_seconds=config.timeout_seconds,
             max_concurrency=config.max_concurrency,
             monthly_budget=config.monthly_budget,
+            model_profiles=config.model_profiles,
+            grading_ready=grading_ready,
             status=config.status,
             configuration_tested=configuration_tested,
             can_enable=(
@@ -237,6 +260,7 @@ class ProviderConfigView(BaseModel):
                 and config.encrypted_api_key is not None
                 and config.api_key_nonce is not None
                 and config.default_model is not None
+                and grading_ready
             ),
             tested_at=config.tested_at,
             created_at=config.created_at,
@@ -341,6 +365,7 @@ class ProviderConfigService:
             timeout_seconds=payload.timeout_seconds,
             max_concurrency=payload.max_concurrency,
             monthly_budget=payload.monthly_budget,
+            model_profiles=payload.model_profiles,
             status=ProviderStatus.DRAFT,
             config_version=1,
             tested_config_version=None,
@@ -417,7 +442,10 @@ class ProviderConfigService:
             raise ProviderNotFoundError("供应商配置不存在")
 
         fields_set = payload.model_fields_set
-        has_new_api_key = "api_key" in fields_set and payload.api_key is not None
+        has_new_api_key = (
+            "api_key" in fields_set  # pragma: allowlist secret
+            and payload.api_key is not None
+        )
         provider_type = payload.provider_type or current.provider_type
         name = payload.name or current.name
         base_url = payload.base_url or current.base_url
@@ -428,10 +456,19 @@ class ProviderConfigService:
         monthly_budget = (
             payload.monthly_budget if "monthly_budget" in fields_set else current.monthly_budget
         )
+        model_profiles = (
+            payload.model_profiles
+            if "model_profiles" in fields_set and payload.model_profiles is not None
+            else current.model_profiles
+        )
         if default_model is None:
             raise ProviderConfigurationError("默认模型尚未配置")
         if default_model not in allowed_models:
             raise ProviderConfigurationError("默认模型必须包含在允许模型中")
+        try:
+            _validate_model_profiles(allowed_models, model_profiles)
+        except ValueError as error:
+            raise ProviderConfigurationError(str(error)) from error
         expected_base_url = OFFICIAL_BASE_URLS.get(provider_type)
         if expected_base_url is not None and base_url != expected_base_url:
             raise ProviderConfigurationError("内置供应商必须使用官方 Base URL")
@@ -464,6 +501,7 @@ class ProviderConfigService:
                 timeout_seconds=timeout_seconds,
                 max_concurrency=max_concurrency,
                 monthly_budget=monthly_budget,
+                model_profiles=model_profiles,
             ),
         )
         if updated is None:

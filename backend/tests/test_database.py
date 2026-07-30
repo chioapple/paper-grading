@@ -24,4 +24,5 @@ def test_application_database_uses_the_configured_bounded_pool() -> None:
 
     assert pool.size() == 3
     assert pool.timeout() == 4
+    assert database.engine.sync_engine.hide_parameters is True
     asyncio.run(database.dispose())

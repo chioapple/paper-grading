@@ -30,11 +30,11 @@ MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' \
 
 ```bash
 cd backend
+test -n "${SUPABASE_SECRET_KEY:?missing securely injected SUPABASE_SECRET_KEY}"
 APP_ENV=development \
 DATABASE_URL='postgresql+asyncpg://...?ssl=require' \
 SUPABASE_URL='https://<project-ref>.supabase.co' \
 SUPABASE_PUBLISHABLE_KEY='sb_publishable_...' \
-SUPABASE_SECRET_KEY='sb_secret_...' \
 AUTH_INVITE_REDIRECT_URL='http://127.0.0.1:5173/auth/callback' \
 FRONTEND_ORIGIN='http://127.0.0.1:5173' \
 ../.venv/bin/python -m app.auth.bootstrap_admin \

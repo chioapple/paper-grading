@@ -13,22 +13,13 @@ import { AuthCallbackPage } from "../routes/auth/AuthCallbackPage";
 import { AdminUsersPage } from "../routes/admin/users/AdminUsersPage";
 import { AdminProvidersPage } from "../routes/admin/providers/AdminProvidersPage";
 import { AssignmentsPage } from "../features/assignments/AssignmentsPage";
+import { EditAssignmentPage } from "../features/assignments/EditAssignmentPage";
 import { NewAssignmentPage } from "../features/assignments/NewAssignmentPage";
 import { RubricPage } from "../features/rubrics/RubricPage";
 import { SubmissionsPage } from "../features/submissions/SubmissionsPage";
-
-function PlannedPage({ area }: { area: "jobs" | "exports" }) {
-  const { language } = useOutletContext<AppOutletContext>();
-  const text = copy[language];
-  const isJobs = area === "jobs";
-
-  return (
-    <div className="page planned-page">
-      <h1>{isJobs ? text.jobsTitle : text.exportsTitle}</h1>
-      <p>{isJobs ? text.jobsBody : text.exportsBody}</p>
-    </div>
-  );
-}
+import { GradingJobsPage } from "../features/jobs/GradingJobsPage";
+import { ReviewWorkbenchPage } from "../features/reviews/ReviewWorkbenchPage";
+import { ExportsPage } from "../features/exports/ExportsPage";
 
 function NotFoundPage() {
   const { language } = useOutletContext<AppOutletContext>();
@@ -69,10 +60,15 @@ export function App() {
       >
         <Route path="/assignments" element={<AssignmentsPage />} />
         <Route path="/assignments/new" element={<NewAssignmentPage />} />
+        <Route path="/assignments/:assignmentId/edit" element={<EditAssignmentPage />} />
         <Route path="/assignments/:assignmentId/rubric" element={<RubricPage />} />
         <Route path="/assignments/:assignmentId/submissions" element={<SubmissionsPage />} />
-        <Route path="/grading-jobs" element={<PlannedPage area="jobs" />} />
-        <Route path="/exports" element={<PlannedPage area="exports" />} />
+        <Route path="/grading-jobs" element={<GradingJobsPage />} />
+        <Route
+          path="/grading-jobs/:jobId/reviews/:itemId"
+          element={<ReviewWorkbenchPage />}
+        />
+        <Route path="/exports" element={<ExportsPage />} />
         <Route
           path="/admin/users"
           element={

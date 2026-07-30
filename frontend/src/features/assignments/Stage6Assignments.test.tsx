@@ -135,6 +135,7 @@ function structuredRubric(): StructuredRubric {
 class Stage6Api {
   assignments: AssignmentSummary[] = [assignmentSummary()];
   createdInput: AssignmentCreateInput | null = null;
+  updatedInput: { title: string; instructions: string } | null = null;
   detail: AssignmentDetail = assignmentDetail();
   structuredProviderId: string | null = null;
   confirmedRubricId: string | null = null;
@@ -172,6 +173,19 @@ class Stage6Api {
   }
 
   async getAssignment() {
+    return this.detail;
+  }
+
+  async updateAssignment(
+    _session: BrowserSession,
+    _assignmentId: string,
+    input: { title: string; instructions: string },
+  ) {
+    this.updatedInput = input;
+    this.detail = { ...this.detail, ...input };
+    this.assignments = this.assignments.map((assignment) => (
+      assignment.id === this.detail.id ? { ...assignment, title: input.title } : assignment
+    ));
     return this.detail;
   }
 
@@ -231,12 +245,15 @@ class Stage6Api {
   async updateAssignmentStatus(
     _session: BrowserSession,
     selectedAssignmentId: string,
-    status: "draft" | "archived",
+    action: "archive" | "restore",
   ) {
     const current = this.assignments.find((assignment) => assignment.id === selectedAssignmentId);
     if (!current) {
       throw new Error("作业不存在");
     }
+    const status: AssignmentSummary["status"] = action === "archive"
+      ? "archived"
+      : current.current_confirmed_version === null ? "draft" : "ready";
     const updated = { ...current, status };
     this.assignments = this.assignments.map((assignment) => assignment.id === selectedAssignmentId ? updated : assignment);
     this.detail = { ...this.detail, status };
@@ -382,6 +399,29 @@ describe("阶段六作业流程", () => {
     });
   });
 
+  it("教师可以从作业列表编辑草稿题目和要求", async () => {
+    const { api } = renderStage6();
+
+    fireEvent.click(await screen.findByRole("link", { name: "编辑作业" }));
+    expect(await screen.findByRole("heading", { name: "编辑作业" })).toBeVisible();
+    expect(screen.getByLabelText("作业名称")).toHaveValue("议论文：社交媒体与学习");
+    fireEvent.change(screen.getByLabelText("作业名称"), {
+      target: { value: "更新后的作业" },
+    });
+    fireEvent.change(screen.getByLabelText("题目要求"), {
+      target: { value: "Write a revised response." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    await waitFor(() => {
+      expect(api.updatedInput).toEqual({
+        title: "更新后的作业",
+        instructions: "Write a revised response.",
+      });
+      expect(screen.getByRole("heading", { name: "作业" })).toBeVisible();
+    });
+  });
+
   it("使用精确十进制判断小数总分是否符合评分步长", async () => {
     const { api } = renderStage6();
     fireEvent.click(await screen.findByRole("link", { name: "创建作业" }));
@@ -453,14 +493,24 @@ describe("阶段六作业流程", () => {
   });
 
   it("教师可以归档并恢复作业", async () => {
-    renderStage6();
+    const api = new Stage6Api();
+    await api.structureRubric(
+      session,
+      assignmentId,
+      rubricId,
+      "33333333-3333-4333-8333-333333333333",
+    );
+    await api.confirmRubric(session, assignmentId, rubricId);
+    api.assignments = [api.detail];
+    renderStage6("/assignments", api);
     await screen.findByText("议论文：社交媒体与学习");
 
     fireEvent.click(screen.getByRole("button", { name: "归档 议论文：社交媒体与学习" }));
     expect(await screen.findByText("已归档")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "恢复 议论文：社交媒体与学习" }));
 
-    expect(await screen.findByText("草稿", { selector: "td" })).toBeVisible();
+    expect(await screen.findByText("可批改", { selector: "td" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "上传论文" })).toBeVisible();
   });
 
   it("修改已确认评分标准时创建新版本而不覆盖旧版", async () => {

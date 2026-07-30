@@ -7,6 +7,7 @@ from uuid import UUID
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from app.providers.base import ProviderModelCapabilities, ProviderModelProfile
 from app.providers.config import (
     ProviderConfigCreate,
     ProviderConfigService,
@@ -23,6 +24,25 @@ from app.providers.connection import (
     ProviderUrlError,
 )
 from app.security.encryption import ApiKeyCipher
+
+
+def deepseek_profile(model: str = "deepseek-v4-flash") -> ProviderModelProfile:
+    return ProviderModelProfile(
+        capabilities=ProviderModelCapabilities(
+            capability_version="admin-confirmed-2026-07-16",
+            model=model,
+            context_window_tokens=1_000_000,
+            max_output_tokens=393_216,
+            structured_output="json_object",
+            schema_dialect="canonical",
+            sampling_policy="temperature_zero",
+            thinking_policy="disabled",
+            output_token_parameter="max_tokens",
+            supports_model_listing=True,
+            pricing=None,
+        ),
+        grading_max_output_tokens=8192,
+    )
 
 
 class InMemoryProviderRepository:
@@ -70,6 +90,7 @@ class InMemoryProviderRepository:
             self.saved is None
             or self.saved.id != provider_id
             or self.saved.tested_config_version != self.saved.config_version
+            or self.saved.default_model not in self.saved.model_profiles
         ):
             return None
         self.saved = self.saved.model_copy(update={"status": "enabled"})
@@ -97,6 +118,7 @@ class InMemoryProviderRepository:
             "allowed_models",
             "default_model",
             "timeout_seconds",
+            "model_profiles",
         }
         sensitive_changed = any(
             getattr(self.saved, field) != changes[field] for field in sensitive_fields
@@ -114,7 +136,11 @@ class InMemoryProviderRepository:
         return self.saved
 
     async def list_enabled(self) -> list[StoredProviderConfig]:
-        if self.saved is None or self.saved.status != "enabled":
+        if (
+            self.saved is None
+            or self.saved.status != "enabled"
+            or self.saved.default_model not in self.saved.model_profiles
+        ):
             return []
         return [self.saved]
 
@@ -141,6 +167,47 @@ def test_api_key_must_be_a_printable_ascii_header_value(invalid_key: str) -> Non
         )
 
 
+def test_model_profile_must_match_its_configured_model_and_safe_output_limit() -> None:
+    capabilities = ProviderModelCapabilities(
+        capability_version="admin-confirmed-2026-07-16",
+        model="deepseek-v4-pro",
+        context_window_tokens=1_000_000,
+        max_output_tokens=393_216,
+        structured_output="json_object",
+        schema_dialect="canonical",
+        sampling_policy="temperature_zero",
+        thinking_policy="disabled",
+        output_token_parameter="max_tokens",
+        supports_model_listing=True,
+        pricing=None,
+    )
+
+    with pytest.raises(ValidationError, match="输出上限"):
+        ProviderModelProfile(
+            capabilities=capabilities,
+            grading_max_output_tokens=393_217,
+        )
+
+    with pytest.raises(ValidationError, match="模型能力"):
+        ProviderConfigCreate(
+            provider_type="deepseek",
+            name="DeepSeek 主账号",
+            base_url="https://api.deepseek.com",
+            api_key=SecretStr("stage-ten-canary-key"),
+            allowed_models=["deepseek-v4-pro"],
+            default_model="deepseek-v4-pro",
+            timeout_seconds="60",
+            max_concurrency=2,
+            monthly_budget=None,
+            model_profiles={
+                "deepseek-v4-flash": ProviderModelProfile(
+                    capabilities=capabilities,
+                    grading_max_output_tokens=8192,
+                )
+            },
+        )
+
+
 @pytest.mark.anyio
 async def test_admin_can_create_a_deepseek_config_without_exposing_the_key() -> None:
     repository = InMemoryProviderRepository()
@@ -158,6 +225,7 @@ async def test_admin_can_create_a_deepseek_config_without_exposing_the_key() -> 
             timeout_seconds="60",
             max_concurrency=2,
             monthly_budget="20.00",
+            model_profiles={"deepseek-v4-flash": deepseek_profile()},
         )
     )
 
@@ -180,7 +248,7 @@ async def test_successful_connection_test_allows_enabling_the_same_config_versio
 
     class SuccessfulTester:
         async def test(self, request: ProviderConnectionRequest) -> ProviderConnectionResult:
-            assert request.api_key == "stage-five-canary-key"
+            assert request.api_key == "stage-five-canary-key"  # pragma: allowlist secret
             return ProviderConnectionResult(
                 available_models=["deepseek-v4-flash", "deepseek-v4-pro"]
             )
@@ -201,6 +269,7 @@ async def test_successful_connection_test_allows_enabling_the_same_config_versio
             timeout_seconds="60",
             max_concurrency=2,
             monthly_budget="20.00",
+            model_profiles={"deepseek-v4-flash": deepseek_profile()},
         )
     )
 
@@ -211,6 +280,42 @@ async def test_successful_connection_test_allows_enabling_the_same_config_versio
     assert tested.provider.can_enable is True
     assert tested.available_models == ["deepseek-v4-flash", "deepseek-v4-pro"]
     assert enabled.status == "enabled"
+
+
+@pytest.mark.anyio
+async def test_tested_provider_without_a_model_profile_cannot_be_enabled() -> None:
+    repository = InMemoryProviderRepository()
+    cipher = ApiKeyCipher.from_base64_master_key(base64.b64encode(bytes(range(32))).decode("ascii"))
+
+    class SuccessfulTester:
+        async def test(self, request: ProviderConnectionRequest) -> ProviderConnectionResult:
+            return ProviderConnectionResult(available_models=[request.default_model])
+
+    service = ProviderConfigService(
+        repository=repository,
+        cipher=cipher,
+        connection_tester=SuccessfulTester(),
+    )
+    created = await service.create(
+        ProviderConfigCreate(
+            provider_type="deepseek",
+            name="DeepSeek 主账号",
+            base_url="https://api.deepseek.com",
+            api_key=SecretStr("stage-five-canary-key"),
+            allowed_models=["deepseek-v4-flash"],
+            default_model="deepseek-v4-flash",
+            timeout_seconds="60",
+            max_concurrency=2,
+            monthly_budget=None,
+        )
+    )
+
+    tested = await service.test_connection(created.id)
+
+    assert tested.provider.grading_ready is False
+    assert tested.provider.can_enable is False
+    with pytest.raises(ProviderStateError, match="测试通过"):
+        await service.enable(created.id)
 
 
 @pytest.mark.anyio
@@ -290,7 +395,7 @@ async def test_updating_a_legacy_draft_can_supply_its_missing_api_key() -> None:
 
     class ReplacementKeyTester:
         async def test(self, request: ProviderConnectionRequest) -> ProviderConnectionResult:
-            assert request.api_key == "replacement-canary-key"
+            assert request.api_key == "replacement-canary-key"  # pragma: allowlist secret
             return ProviderConnectionResult(available_models=["deepseek-v4-flash"])
 
     service = ProviderConfigService(
@@ -426,6 +531,7 @@ async def test_teacher_model_catalog_only_contains_enabled_allowed_models() -> N
             timeout_seconds="60",
             max_concurrency=2,
             monthly_budget="20.00",
+            model_profiles={"deepseek-v4-flash": deepseek_profile()},
         )
     )
 
@@ -472,6 +578,7 @@ async def test_enabled_provider_can_be_disabled() -> None:
             timeout_seconds="60",
             max_concurrency=2,
             monthly_budget=None,
+            model_profiles={"deepseek-v4-flash": deepseek_profile()},
         )
     )
     await service.test_connection(created.id)

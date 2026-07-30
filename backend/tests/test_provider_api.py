@@ -73,7 +73,7 @@ def test_admin_creates_a_provider_without_the_api_key_in_the_response() -> None:
                 "provider_type": "deepseek",
                 "name": "DeepSeek 主账号",
                 "base_url": "https://api.deepseek.com",
-                "api_key": "stage-five-canary-key",
+                "api_key": "stage-five-canary-key",  # pragma: allowlist secret
                 "allowed_models": ["deepseek-v4-flash"],
                 "default_model": "deepseek-v4-flash",
                 "timeout_seconds": "60",
@@ -90,7 +90,7 @@ def test_admin_creates_a_provider_without_the_api_key_in_the_response() -> None:
 
 
 def test_request_validation_error_never_echoes_an_invalid_api_key() -> None:
-    invalid_api_key = "stage-five-canary-key with spaces"
+    invalid_api_key = "stage-five-canary-key with spaces"  # pragma: allowlist secret
 
     class StubProviderService:
         async def create(self, payload: ProviderConfigCreate) -> ProviderConfigView:
@@ -134,7 +134,7 @@ def test_request_validation_error_never_echoes_an_invalid_api_key() -> None:
 
 
 def test_model_validation_error_never_echoes_the_request_body() -> None:
-    api_key = "stage-five-model-validation-canary"
+    api_key = "stage-five-model-validation-canary"  # pragma: allowlist secret
 
     class StubProviderService:
         async def create(self, payload: ProviderConfigCreate) -> ProviderConfigView:

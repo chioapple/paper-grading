@@ -4,10 +4,21 @@ import type {
   AssignmentCreateInput,
   AssignmentDetail,
   AssignmentSummary,
+  AssignmentUpdateInput,
+  ExportDownload,
+  ExportType,
+  ExportView,
+  GradingJobCreated,
   InviteTeacherInput,
   ProviderConfig,
   ProviderConfigInput,
   ProviderTestResult,
+  ReviewConfirmationRef,
+  ReviewConfirmationResult,
+  ReviewDetail,
+  ReviewDraft,
+  ReviewDraftInput,
+  ReviewJobSummary,
   RubricView,
   RubricDraftInput,
   SubmissionDownload,
@@ -47,6 +58,116 @@ class HttpAppApi implements AppApi, AuthApi {
     return this.request<Account>("/auth/complete-invite", session, { method: "POST" });
   }
 
+  async listExports(session: BrowserSession) {
+    return this.request<ExportView[]>("/exports", session);
+  }
+
+  async createExport(
+    session: BrowserSession,
+    gradingJobId: string,
+    exportType: ExportType,
+    idempotencyKey: string,
+  ) {
+    return this.request<ExportView>("/exports", session, {
+      body: JSON.stringify({
+        grading_job_id: gradingJobId,
+        export_type: exportType,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      method: "POST",
+    });
+  }
+
+  async getExport(session: BrowserSession, exportId: string) {
+    return this.request<ExportView>(`/exports/${exportId}`, session);
+  }
+
+  async createExportDownload(session: BrowserSession, exportId: string) {
+    return this.request<ExportDownload>(`/exports/${exportId}/download`, session, {
+      method: "POST",
+    });
+  }
+
+  async listReviewJobs(session: BrowserSession) {
+    return this.request<ReviewJobSummary[]>("/grading-jobs", session);
+  }
+
+  async getReview(session: BrowserSession, jobId: string, itemId: string) {
+    return this.request<ReviewDetail>(
+      `/grading-jobs/${jobId}/items/${itemId}/review`,
+      session,
+    );
+  }
+
+  async saveReviewDraft(
+    session: BrowserSession,
+    jobId: string,
+    itemId: string,
+    input: ReviewDraftInput,
+  ) {
+    return this.request<ReviewDraft>(
+      `/grading-jobs/${jobId}/items/${itemId}/review`,
+      session,
+      {
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+        method: "PUT",
+      },
+    );
+  }
+
+  async confirmReview(
+    session: BrowserSession,
+    jobId: string,
+    itemId: string,
+    input: ReviewDraftInput,
+  ) {
+    return this.request<ReviewConfirmationResult>(
+      `/grading-jobs/${jobId}/items/${itemId}/review/confirm`,
+      session,
+      {
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    );
+  }
+
+  async confirmReviewBatch(
+    session: BrowserSession,
+    jobId: string,
+    reviews: ReviewConfirmationRef[],
+  ) {
+    return this.request<ReviewConfirmationResult>(
+      `/grading-jobs/${jobId}/reviews/batch-confirm`,
+      session,
+      {
+        body: JSON.stringify({ reviews }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    );
+  }
+
+  async regradeReview(session: BrowserSession, jobId: string, itemId: string) {
+    await this.request<unknown>(
+      `/grading-jobs/${jobId}/items/${itemId}/review/regrade`,
+      session,
+      { method: "POST" },
+    );
+  }
+
+  async retryGradingItem(session: BrowserSession, jobId: string, itemId: string) {
+    await this.request<unknown>(
+      `/grading-jobs/${jobId}/items/${itemId}/retry`,
+      session,
+      { method: "POST" },
+    );
+  }
+
   async listAssignments(session: BrowserSession) {
     return this.request<AssignmentSummary[]>("/assignments", session);
   }
@@ -67,6 +188,18 @@ class HttpAppApi implements AppApi, AuthApi {
 
   async getAssignment(session: BrowserSession, assignmentId: string) {
     return this.request<AssignmentDetail>(`/assignments/${assignmentId}`, session);
+  }
+
+  async updateAssignment(
+    session: BrowserSession,
+    assignmentId: string,
+    input: AssignmentUpdateInput,
+  ) {
+    return this.request<AssignmentDetail>(`/assignments/${assignmentId}`, session, {
+      body: JSON.stringify(input),
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+    });
   }
 
   async listTeacherProviders(session: BrowserSession) {
@@ -101,10 +234,10 @@ class HttpAppApi implements AppApi, AuthApi {
   async updateAssignmentStatus(
     session: BrowserSession,
     assignmentId: string,
-    status: "draft" | "archived",
+    action: "archive" | "restore",
   ) {
     return this.request<AssignmentDetail>(`/assignments/${assignmentId}/status`, session, {
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ action }),
       headers: { "Content-Type": "application/json" },
       method: "PUT",
     });
@@ -156,6 +289,26 @@ class HttpAppApi implements AppApi, AuthApi {
       `/assignments/${assignmentId}/submissions/${submissionId}/download`,
       session,
       { method: "POST" },
+    );
+  }
+
+  async createGradingJob(
+    session: BrowserSession,
+    assignmentId: string,
+    submissionIds: string[],
+    idempotencyKey: string,
+  ) {
+    return this.request<GradingJobCreated>(
+      `/assignments/${assignmentId}/grading-jobs`,
+      session,
+      {
+        body: JSON.stringify({ submission_ids: submissionIds }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        method: "POST",
+      },
     );
   }
 

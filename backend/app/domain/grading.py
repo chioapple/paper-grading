@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import unicodedata
 from decimal import Decimal
 from typing import Annotated, Final, Literal
 from uuid import UUID
@@ -36,6 +37,23 @@ ModelDecimal = Annotated[
     Field(max_digits=10, decimal_places=4),
 ]
 RevisionSuggestion = Annotated[str, Field(min_length=1, max_length=4000)]
+
+
+def require_english_narrative(value: object, field_name: str) -> object:
+    """叙述字段只允许拉丁字母，明确拒绝中文等其他文字脚本。"""
+
+    if not isinstance(value, str):
+        return value
+    has_latin_letter = False
+    for character in value:
+        if not character.isalpha():
+            continue
+        if "LATIN" not in unicodedata.name(character, ""):
+            raise ValueError(f"{field_name}必须使用英文")
+        has_latin_letter = True
+    if not has_latin_letter:
+        raise ValueError(f"{field_name}必须包含英文字母")
+    return value
 
 
 class GradeRequest(BaseModel):
@@ -97,13 +115,15 @@ class DimensionResult(BaseModel):
     def normalize_reason(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             raise ValueError("评分理由不能为空")
-        return value
+        return require_english_narrative(value, "评分理由")
 
     @field_validator("revision_suggestions")
     @classmethod
     def normalize_suggestions(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         if any(not value.strip() for value in values):
             raise ValueError("修改建议不能为空")
+        for value in values:
+            require_english_narrative(value, "修改建议")
         return values
 
 
@@ -122,7 +142,7 @@ class DeductionResult(BaseModel):
     def normalize_reason(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             raise ValueError("扣分理由不能为空")
-        return value
+        return require_english_narrative(value, "扣分理由")
 
 
 class GradeResult(BaseModel):
@@ -140,7 +160,7 @@ class GradeResult(BaseModel):
     def normalize_feedback(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             raise ValueError("总体反馈不能为空")
-        return value
+        return require_english_narrative(value, "总体反馈")
 
 
 class ValidatedGradeResult(GradeResult):

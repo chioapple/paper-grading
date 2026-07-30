@@ -1146,6 +1146,7 @@ async def test_adapter_deadline_covers_the_complete_provider_call() -> None:
 
     assert raised.value.code == "provider_timeout"
     assert raised.value.retryable
+    assert raised.value.retry_safety == "unknown"
 
 
 @pytest.mark.anyio
@@ -1217,6 +1218,7 @@ def test_shared_http_failures_have_stable_retryable_classification(
 
     assert raised.value.code == expected_code
     assert raised.value.retryable
+    assert raised.value.retry_safety == "safe"
     assert "sensitive upstream detail" not in str(raised.value)
 
 

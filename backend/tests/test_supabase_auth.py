@@ -13,7 +13,7 @@ from app.auth.supabase import SupabaseAuthError, SupabaseAuthGateway
 async def test_verify_user_token_uses_publishable_key_and_returns_identity() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == "https://test-project.supabase.co/auth/v1/user"
-        assert request.headers["apikey"] == "sb_publishable_test"
+        assert request.headers["apikey"] == "sb_publishable_test"  # pragma: allowlist secret
         assert request.headers["authorization"] == "Bearer teacher-token"
         return httpx.Response(
             200,
@@ -27,7 +27,7 @@ async def test_verify_user_token_uses_publishable_key_and_returns_identity() -> 
         gateway = SupabaseAuthGateway(
             base_url="https://test-project.supabase.co",
             publishable_key="sb_publishable_test",
-            secret_key="sb_secret_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
             invite_redirect_url="http://127.0.0.1:5173/auth/callback",
             client=client,
         )
@@ -39,6 +39,24 @@ async def test_verify_user_token_uses_publishable_key_and_returns_identity() -> 
 
 
 @pytest.mark.anyio
+async def test_verify_user_token_rejects_non_ascii_placeholder_as_stable_auth_error() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("无效令牌不得发往 Supabase Auth")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = SupabaseAuthGateway(
+            base_url="https://test-project.supabase.co",
+            publishable_key="sb_publishable_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
+            invite_redirect_url="http://127.0.0.1:5173/auth/callback",
+            client=client,
+        )
+
+        with pytest.raises(SupabaseAuthError, match="访问令牌无效"):
+            await gateway.verify_user_token("教师A的访问令牌")
+
+
+@pytest.mark.anyio
 async def test_invite_teacher_uses_secret_key_only_on_server() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
@@ -46,7 +64,7 @@ async def test_invite_teacher_uses_secret_key_only_on_server() -> None:
             "https://test-project.supabase.co/auth/v1/invite"
             "?redirect_to=http%3A%2F%2F127.0.0.1%3A5173%2Fauth%2Fcallback"
         )
-        assert request.headers["apikey"] == "sb_secret_test"
+        assert request.headers["apikey"] == "sb_secret_test"  # pragma: allowlist secret
         assert request.headers["authorization"] == "Bearer sb_secret_test"
         assert json.loads(request.content) == {
             "email": "teacher@example.edu",
@@ -66,7 +84,7 @@ async def test_invite_teacher_uses_secret_key_only_on_server() -> None:
         gateway = SupabaseAuthGateway(
             base_url="https://test-project.supabase.co",
             publishable_key="sb_publishable_test",
-            secret_key="sb_secret_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
             invite_redirect_url="http://127.0.0.1:5173/auth/callback",
             client=client,
         )
@@ -103,7 +121,7 @@ async def test_disable_teacher_bans_the_auth_user() -> None:
         gateway = SupabaseAuthGateway(
             base_url="https://test-project.supabase.co",
             publishable_key="sb_publishable_test",
-            secret_key="sb_secret_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
             invite_redirect_url="http://127.0.0.1:5173/auth/callback",
             client=client,
         )
@@ -131,7 +149,7 @@ async def test_enable_teacher_removes_the_auth_ban() -> None:
         gateway = SupabaseAuthGateway(
             base_url="https://test-project.supabase.co",
             publishable_key="sb_publishable_test",
-            secret_key="sb_secret_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
             invite_redirect_url="http://127.0.0.1:5173/auth/callback",
             client=client,
         )
@@ -164,7 +182,7 @@ async def test_list_users_reads_the_admin_user_page() -> None:
         gateway = SupabaseAuthGateway(
             base_url="https://test-project.supabase.co",
             publishable_key="sb_publishable_test",
-            secret_key="sb_secret_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
             invite_redirect_url="http://127.0.0.1:5173/auth/callback",
             client=client,
         )
@@ -183,7 +201,7 @@ async def test_network_failures_are_exposed_as_a_stable_auth_gateway_error() -> 
         gateway = SupabaseAuthGateway(
             base_url="https://test-project.supabase.co",
             publishable_key="sb_publishable_test",
-            secret_key="sb_secret_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
             invite_redirect_url="http://127.0.0.1:5173/auth/callback",
             client=client,
         )
@@ -196,14 +214,14 @@ async def test_network_failures_are_exposed_as_a_stable_auth_gateway_error() -> 
 async def test_public_signup_must_be_disabled() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == "https://test-project.supabase.co/auth/v1/settings"
-        assert request.headers["apikey"] == "sb_publishable_test"
+        assert request.headers["apikey"] == "sb_publishable_test"  # pragma: allowlist secret
         return httpx.Response(200, json={"disable_signup": False})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gateway = SupabaseAuthGateway(
             base_url="https://test-project.supabase.co",
             publishable_key="sb_publishable_test",
-            secret_key="sb_secret_test",
+            secret_key="sb_secret_test",  # pragma: allowlist secret
             invite_redirect_url="http://127.0.0.1:5173/auth/callback",
             client=client,
         )

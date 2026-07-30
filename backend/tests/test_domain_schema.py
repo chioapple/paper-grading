@@ -160,6 +160,7 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
         "teacher_reviews",
         "audit_logs",
         "exports",
+        "export_items",
     }
 
     for table_name in (
@@ -192,9 +193,16 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
     )
     grading_jobs = Base.metadata.tables["grading_jobs"]
     assert {
+        "assignment_title_snapshot",
+        "assignment_instructions_snapshot",
+        "expected_item_count",
+        "request_hash",
+        "model_parameters_hash",
         "result_schema_version",
         "result_schema_hash",
         "rubric_hash",
+        "state_version",
+        "updated_at",
     } <= set(grading_jobs.c.keys())
     assert all(
         grading_jobs.c[column_name].nullable is False
@@ -202,6 +210,11 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
             "result_schema_version",
             "result_schema_hash",
             "rubric_hash",
+            "request_hash",
+            "model_parameters_hash",
+            "expected_item_count",
+            "state_version",
+            "updated_at",
         )
     )
 
@@ -215,6 +228,19 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
             ("submissions.id", "submissions.assignment_id", "submissions.owner_id"),
         ),
     } <= foreign_key_shapes("grading_job_items")
+    grading_job_items = Base.metadata.tables["grading_job_items"]
+    assert {
+        "dispatch_version",
+        "retry_count",
+        "available_at",
+        "lease_token",
+        "lease_expires_at",
+        "started_at",
+        "finished_at",
+        "error_code",
+        "updated_at",
+    } <= set(grading_job_items.c.keys())
+    assert "grading_job_items_dispatch_idx" in index_names("grading_job_items")
 
     assert {
         "grading_attempts_score_range_check",
@@ -227,16 +253,51 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
         "grading_attempts_owner_id_idempotency_key_key",
     } <= constraint_names("grading_attempts", UniqueConstraint)
     grading_attempts = Base.metadata.tables["grading_attempts"]
-    assert "request_version" in grading_attempts.c
+    assert {
+        "request_version",
+        "attempt_kind",
+        "parent_attempt_id",
+        "scoring_round",
+        "call_sequence",
+        "provider_call_started_at",
+        "provider_call_state",
+        "provider_request_id",
+        "reported_model",
+        "subtotal",
+        "deduction_total",
+        "deduction_results",
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_write_input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "total_tokens",
+        "estimated_cost_amount",
+        "cost_currency",
+        "tariff_version",
+        "error_details",
+    } <= set(grading_attempts.c.keys())
     assert grading_attempts.c.request_version.nullable is False
+    assert "grading_attempts_one_running_idx" in index_names("grading_attempts")
+    assert "grading_attempts_raw_response_object_key_idx" in index_names("grading_attempts")
+
+    provider_configs = Base.metadata.tables["provider_configs"]
+    assert provider_configs.c.model_profiles.nullable is False
 
     assert {
         "teacher_reviews_score_range_check",
         "teacher_reviews_confirmation_check",
         "teacher_reviews_revision_number_check",
         "teacher_reviews_json_shapes_check",
+        "teacher_reviews_totals_check",
     } <= constraint_names("teacher_reviews", CheckConstraint)
     assert "teacher_reviews_one_confirmed_idx" in index_names("teacher_reviews")
+    assert "teacher_reviews_one_attempt_idx" in index_names("teacher_reviews")
+    teacher_reviews = Base.metadata.tables["teacher_reviews"]
+    assert teacher_reviews.c.final_score.nullable is False
+    assert teacher_reviews.c.criteria_results.nullable is False
+    assert teacher_reviews.c.deduction_results.nullable is False
+    assert teacher_reviews.c.feedback.nullable is False
 
     assert {
         "audit_logs_owner_created_idx",
@@ -245,7 +306,51 @@ def test_grading_pipeline_schema_is_versioned_and_auditable() -> None:
     } <= index_names("audit_logs")
     assert "audit_logs_metadata_check" in constraint_names("audit_logs", CheckConstraint)
     assert "exports_owner_id_idempotency_key_key" in constraint_names("exports", UniqueConstraint)
-    assert "exports_audit_metadata_check" in constraint_names("exports", CheckConstraint)
+    exports = Base.metadata.tables["exports"]
+    assert {
+        "request_hash",
+        "workbook_schema_version",
+        "snapshot_at",
+        "started_at",
+        "claim_token",
+        "lease_expires_at",
+        "safe_filename",
+        "file_size_bytes",
+        "file_sha256",
+    } <= set(exports.c.keys())
+    assert {
+        "exports_request_snapshot_check",
+        "exports_result_check",
+        "exports_object_key_check",
+        "exports_safe_filename_check",
+    } <= constraint_names("exports", CheckConstraint)
+    assert {"exports_dispatch_idx", "exports_object_key_idx"} <= index_names("exports")
+
+    assert {
+        "export_items_position_check",
+        "export_items_source_type_check",
+        "export_items_review_source_check",
+        "export_items_original_filename_check",
+        "export_items_result_snapshot_check",
+    } <= constraint_names("export_items", CheckConstraint)
+    assert {
+        "export_items_export_id_position_key",
+        "export_items_export_id_grading_job_item_id_key",
+    } <= constraint_names("export_items", UniqueConstraint)
+    assert {
+        (
+            ("export_id", "owner_id", "grading_job_id"),
+            ("exports.id", "exports.owner_id", "exports.grading_job_id"),
+        ),
+        (
+            ("grading_attempt_id", "grading_job_item_id", "owner_id"),
+            (
+                "grading_attempts.id",
+                "grading_attempts.grading_job_item_id",
+                "grading_attempts.owner_id",
+            ),
+        ),
+    } <= foreign_key_shapes("export_items")
 
 
 def test_nullable_jsonb_fields_bind_python_none_as_sql_null() -> None:
@@ -255,7 +360,8 @@ def test_nullable_jsonb_fields_bind_python_none_as_sql_null() -> None:
     for table_name, column_name in (
         ("rubric_versions", "structured_rubric"),
         ("grading_attempts", "criteria_results"),
-        ("teacher_reviews", "criteria_results"),
+        ("grading_attempts", "deduction_results"),
+        ("grading_attempts", "error_details"),
     ):
         column_type = Base.metadata.tables[table_name].c[column_name].type
         processor = column_type.bind_processor(dialect)

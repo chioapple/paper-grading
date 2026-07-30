@@ -106,12 +106,22 @@ class InMemoryAssignmentRepository:
         self,
         owner_id: UUID,
         assignment_id: UUID,
-        status: str,
+        action: str,
     ) -> AssignmentDetail | None:
         current = await self.get_assignment(owner_id, assignment_id)
         if current is None:
             return None
-        updated = current.model_copy(update={"status": status})
+        if action == "archive":
+            restored_status = "archived"
+        elif action == "restore":
+            restored_status = (
+                "ready"
+                if any(rubric.status == "confirmed" for rubric in current.rubric_versions)
+                else "draft"
+            )
+        else:
+            return None
+        updated = current.model_copy(update={"status": restored_status})
         self.assignments[assignment_id] = updated
         return updated
 
@@ -339,7 +349,7 @@ async def test_teacher_can_edit_assignment_text_only_while_it_is_a_draft() -> No
 
 
 @pytest.mark.anyio
-async def test_teacher_archives_and_restores_an_assignment_without_marking_it_ready() -> None:
+async def test_teacher_archives_and_restores_a_draft_assignment_as_draft() -> None:
     repository = InMemoryAssignmentRepository()
     service = AssignmentRubricService(repository=repository)
     created = await service.create_assignment(
@@ -356,16 +366,62 @@ async def test_teacher_archives_and_restores_an_assignment_without_marking_it_re
     archived = await service.update_assignment_status(
         OWNER_ID,
         created.id,
-        AssignmentStatusUpdate(status="archived"),
+        AssignmentStatusUpdate(action="archive"),
     )
     restored = await service.update_assignment_status(
         OWNER_ID,
         created.id,
-        AssignmentStatusUpdate(status="draft"),
+        AssignmentStatusUpdate(action="restore"),
     )
 
     assert archived.status == "archived"
     assert restored.status == "draft"
+
+
+@pytest.mark.anyio
+async def test_teacher_restores_an_assignment_with_a_confirmed_rubric_as_ready() -> None:
+    repository = InMemoryAssignmentRepository()
+    service = AssignmentRubricService(repository=repository)
+    created = await service.create_assignment(
+        OWNER_ID,
+        AssignmentCreate(
+            title="Argumentative Essay",
+            instructions="Write 800 words.",
+            original_rubric="Thesis 40; evidence 60.",
+            total_score="100",
+            score_step="1",
+        ),
+    )
+    confirmed_rubric = created.rubric_versions[0].model_copy(
+        update={
+            "status": "confirmed",
+            "confirmed_at": datetime(2026, 7, 16, tzinfo=UTC),
+        }
+    )
+    repository.assignments[created.id] = created.model_copy(
+        update={
+            "status": "ready",
+            "current_rubric_status": "confirmed",
+            "current_draft_version": None,
+            "current_confirmed_version": 1,
+            "rubric_versions": [confirmed_rubric],
+        }
+    )
+
+    archived = await service.update_assignment_status(
+        OWNER_ID,
+        created.id,
+        AssignmentStatusUpdate(action="archive"),
+    )
+    restored = await service.update_assignment_status(
+        OWNER_ID,
+        created.id,
+        AssignmentStatusUpdate(action="restore"),
+    )
+
+    assert archived.status == "archived"
+    assert restored.status == "ready"
+    assert restored.current_confirmed_version == 1
 
 
 @pytest.mark.anyio

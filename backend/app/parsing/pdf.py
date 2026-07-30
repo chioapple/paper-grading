@@ -5,6 +5,7 @@ from pdfminer.pdfdocument import PDFPasswordIncorrect
 from pdfminer.pdfparser import PDFSyntaxError
 from pypdf import PdfReader
 from pypdf.errors import FileNotDecryptedError, PdfReadError
+from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject
 
 from app.parsing.models import (
     PDF_MEDIA_TYPE,
@@ -16,6 +17,69 @@ from app.parsing.models import (
     StagedDocument,
 )
 from app.parsing.normalize import normalize_text
+
+FORBIDDEN_PDF_KEYS = frozenset(
+    {
+        "/AA",
+        "/AcroForm",
+        "/EmbeddedFiles",
+        "/JavaScript",
+        "/Launch",
+        "/OpenAction",
+        "/RichMedia",
+        "/XFA",
+    }
+)
+FORBIDDEN_PDF_ACTIONS = frozenset(
+    {
+        "/GoToE",
+        "/GoToR",
+        "/ImportData",
+        "/JavaScript",
+        "/Launch",
+        "/Rendition",
+        "/SubmitForm",
+        "/URI",
+    }
+)
+MAX_PDF_OBJECTS_INSPECTED = 100_000
+
+
+def _reject_active_content(reader: PdfReader) -> None:
+    """结构化遍历 PDF 对象图，拒绝脚本、外部动作、附件和交互表单。"""
+
+    stack: list[object] = [reader.trailer]
+    seen_indirect: set[tuple[int, int]] = set()
+    seen_direct: set[int] = set()
+    inspected = 0
+    while stack:
+        current = stack.pop()
+        if isinstance(current, IndirectObject):
+            reference = (current.idnum, current.generation)
+            if reference in seen_indirect:
+                continue
+            seen_indirect.add(reference)
+            current = current.get_object()
+        elif isinstance(current, (DictionaryObject, ArrayObject)):
+            identity = id(current)
+            if identity in seen_direct:
+                continue
+            seen_direct.add(identity)
+
+        inspected += 1
+        if inspected > MAX_PDF_OBJECTS_INSPECTED:
+            raise DocumentParseError("pdf_structure_too_complex", "PDF 对象结构超过安全限制")
+        if isinstance(current, DictionaryObject):
+            keys = {str(key) for key in current}
+            action = current.get("/S")
+            if keys & FORBIDDEN_PDF_KEYS or str(action) in FORBIDDEN_PDF_ACTIONS:
+                raise DocumentParseError(
+                    "pdf_active_content_unsupported",
+                    "PDF 包含脚本、外部动作、附件或交互表单",
+                )
+            stack.extend(current.values())
+        elif isinstance(current, ArrayObject):
+            stack.extend(current)
 
 
 def parse_pdf(document: StagedDocument, limits: ParseLimits) -> ParsedDocument:
@@ -30,6 +94,7 @@ def parse_pdf(document: StagedDocument, limits: ParseLimits) -> ParsedDocument:
             raise DocumentParseError("document_empty", "PDF 没有页面")
         if page_count > limits.max_pdf_pages:
             raise DocumentParseError("pdf_pages_too_many", "PDF 页数超过限制")
+        _reject_active_content(reader)
 
         blocks: list[DocumentBlock] = []
         character_count = 0

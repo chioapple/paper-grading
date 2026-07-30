@@ -70,7 +70,7 @@ class AssignmentRubricRepository(Protocol):
         self,
         owner_id: UUID,
         assignment_id: UUID,
-        status: str,
+        action: str,
     ) -> AssignmentDetail | None: ...
 
     async def create_rubric_draft(
@@ -171,12 +171,14 @@ class AssignmentRubricService:
         payload: AssignmentStatusUpdate,
     ) -> AssignmentDetail:
         current = await self.get_assignment(owner_id, assignment_id)
-        if payload.status == "draft" and current.status not in {"draft", "archived"}:
-            raise AssignmentStateError("只有已归档作业可以恢复为草稿")
+        if payload.action == "archive" and current.status == "archived":
+            return current
+        if payload.action == "restore" and current.status != "archived":
+            raise AssignmentStateError("只有已归档作业可以恢复")
         updated = await self._repository.update_assignment_status(
             owner_id,
             assignment_id,
-            payload.status,
+            payload.action,
         )
         if updated is None:
             raise AssignmentStateError("更新期间作业状态已变化")

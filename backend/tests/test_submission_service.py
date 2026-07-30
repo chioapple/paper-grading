@@ -14,6 +14,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
+from app.monitoring.repository import QuotaExceededError
 from app.parsing.models import DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, DocumentParseError, ParseLimits
 from app.storage.supabase import SupabaseStorageError
 from app.submissions.models import (
@@ -193,6 +194,49 @@ def test_parser_rejection_marks_submission_failed_with_stable_code(tmp_path: Pat
     assert repository.submission.error_code == "pdf_scan_unsupported"
     assert len(storage.objects) == 1
     assert list(tmp_path.iterdir()) == []
+
+
+def test_storage_quota_block_marks_the_reserved_submission_retryable(
+    tmp_path: Path,
+) -> None:
+    class QuotaBlockedStorage(MemoryObjectStorage):
+        async def put_file(
+            self,
+            key: str,
+            path: Path,
+            *,
+            media_type: str,
+            content_sha256: bytes,
+        ) -> None:
+            raise QuotaExceededError(
+                resource="storage",
+                code="storage_quota_exceeded",
+            )
+
+    repository = InMemorySubmissionRepository()
+    service = SubmissionService(
+        repository=repository,
+        storage=QuotaBlockedStorage(),
+        temporary_root=tmp_path,
+        id_factory=lambda: SUBMISSION_ID,
+    )
+
+    with pytest.raises(QuotaExceededError, match="storage_quota_exceeded"):
+        asyncio.run(
+            service.upload_submission(
+                OWNER_ID,
+                ASSIGNMENT_ID,
+                IncomingSubmission(
+                    stream=BytesIO(build_docx()),
+                    original_filename="quota-blocked.docx",
+                    client_media_type=DOCX_MEDIA_TYPE,
+                ),
+            )
+        )
+
+    assert repository.transitions == ["failed"]
+    assert repository.submission is not None
+    assert repository.submission.error_code == "storage_quota_exceeded"
 
 
 def test_ready_duplicate_returns_existing_submission_without_rewriting_objects(

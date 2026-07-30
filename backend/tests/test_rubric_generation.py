@@ -85,7 +85,7 @@ def generation_request() -> RubricGenerationRequest:
     return RubricGenerationRequest(
         provider_type="deepseek",
         base_url="https://api.deepseek.com",
-        api_key="secret-canary",
+        api_key="secret-canary",  # pragma: allowlist secret
         model="deepseek-chat",
         timeout_seconds="60",
         assignment_title="Argumentative Essay",
@@ -359,7 +359,7 @@ async def test_invalid_provider_json_is_rejected_without_fence_stripping_or_repa
             RubricGenerationRequest(
                 provider_type="deepseek",
                 base_url="https://api.deepseek.com",
-                api_key="secret-canary",
+                api_key="secret-canary",  # pragma: allowlist secret
                 model="deepseek-chat",
                 timeout_seconds="60",
                 assignment_title="Argumentative Essay",

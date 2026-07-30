@@ -56,7 +56,7 @@ async def test_deepseek_connection_lists_models_without_returning_the_key() -> N
         ProviderConnectionRequest(
             provider_type=ProviderType.DEEPSEEK,
             base_url="https://api.deepseek.com",
-            api_key="stage-five-canary-key",
+            api_key="stage-five-canary-key",  # pragma: allowlist secret
             default_model="deepseek-v4-flash",
             timeout_seconds=Decimal("60"),
         )
@@ -89,7 +89,7 @@ async def test_wrong_provider_key_returns_a_stable_error_without_upstream_detail
             ProviderConnectionRequest(
                 provider_type=ProviderType.DEEPSEEK,
                 base_url="https://api.deepseek.com",
-                api_key="stage-five-canary-key",
+                api_key="stage-five-canary-key",  # pragma: allowlist secret
                 default_model="deepseek-v4-flash",
                 timeout_seconds=Decimal("60"),
             )
@@ -132,7 +132,7 @@ async def test_gemini_connection_uses_its_native_models_contract() -> None:
         ProviderConnectionRequest(
             provider_type=ProviderType.GEMINI,
             base_url="https://generativelanguage.googleapis.com",
-            api_key="stage-five-canary-key",
+            api_key="stage-five-canary-key",  # pragma: allowlist secret
             default_model="gemini-3.5-flash",
             timeout_seconds=Decimal("30"),
         )
@@ -174,7 +174,7 @@ async def test_anthropic_connection_uses_versioned_api_key_headers() -> None:
         ProviderConnectionRequest(
             provider_type=ProviderType.ANTHROPIC,
             base_url="https://api.anthropic.com",
-            api_key="stage-five-canary-key",
+            api_key="stage-five-canary-key",  # pragma: allowlist secret
             default_model="claude-opus-4-20260701",
             timeout_seconds=Decimal("30"),
         )

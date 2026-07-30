@@ -90,6 +90,46 @@ def build_docx_with_extra_entry(name: str, content: bytes) -> bytes:
     return output.getvalue()
 
 
+def build_docx_with_external_relationship() -> bytes:
+    relationship_name = "word/_rels/document.xml.rels"
+    output = BytesIO()
+    with ZipFile(BytesIO(build_docx())) as source, ZipFile(output, "w", ZIP_DEFLATED) as target:
+        for entry in source.infolist():
+            if entry.filename != relationship_name:
+                target.writestr(entry, source.read(entry))
+        target.writestr(
+            relationship_name,
+            (
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                '<Relationship Id="external" '
+                'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                'relationships/hyperlink" '
+                'Target="https://attacker.example/payload" TargetMode="External"/>'
+                "</Relationships>"
+            ),
+        )
+    return output.getvalue()
+
+
+def build_docx_with_unsafe_internal_relationship(relationship_type: str) -> bytes:
+    relationship_name = "word/_rels/document.xml.rels"
+    output = BytesIO()
+    with ZipFile(BytesIO(build_docx())) as source, ZipFile(output, "w", ZIP_DEFLATED) as target:
+        for entry in source.infolist():
+            content = source.read(entry)
+            if entry.filename == relationship_name:
+                unsafe_relationship = (
+                    '<Relationship Id="unsafe-internal" '
+                    f'Type="{relationship_type}" Target="customPayload.bin"/>'
+                ).encode()
+                content = content.replace(
+                    b"</Relationships>",
+                    unsafe_relationship + b"</Relationships>",
+                )
+            target.writestr(entry, content)
+    return output.getvalue()
+
+
 def test_docx_upload_is_detected_hashed_and_parsed_in_body_order(tmp_path: Path) -> None:
     content = build_docx()
 
@@ -226,6 +266,17 @@ def test_docx_uncompressed_size_limit_is_enforced_before_parsing(tmp_path: Path)
     [
         ("../escape.xml", b"<root/>", "docx_archive_invalid"),
         ("word/vbaProject.bin", b"macro", "docx_macro_unsupported"),
+        ("WORD/VbaProject.bin", b"macro", "docx_macro_unsupported"),
+        (
+            "word/embeddings/oleObject1.bin",
+            b"embedded-object",
+            "docx_active_content_unsupported",
+        ),
+        (
+            "word/activeX/activeX1.bin",
+            b"active-x",
+            "docx_active_content_unsupported",
+        ),
         ("word/unsafe.xml", b"<!DOCTYPE root><root/>", "docx_xml_unsafe"),
         ("word/document.xml", b"<duplicate/>", "docx_archive_invalid"),
     ],
@@ -250,6 +301,43 @@ def test_docx_archive_rejects_unsafe_entries(
         parse_document(staged, ParseLimits())
 
     assert error.value.code == expected_code
+
+
+def test_docx_archive_rejects_external_relationships(tmp_path: Path) -> None:
+    with (
+        stage_upload(
+            BytesIO(build_docx_with_external_relationship()),
+            original_filename="external-relationship.docx",
+            client_media_type=DOCX_MEDIA_TYPE,
+            temporary_directory=tmp_path,
+            limits=ParseLimits(),
+        ) as staged,
+        pytest.raises(DocumentParseError) as error,
+    ):
+        parse_document(staged, ParseLimits())
+
+    assert error.value.code == "docx_external_relationship"
+
+
+def test_docx_archive_rejects_internal_ole_relationship_with_nonstandard_target(
+    tmp_path: Path,
+) -> None:
+    relationship_type = (
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject"
+    )
+    with (
+        stage_upload(
+            BytesIO(build_docx_with_unsafe_internal_relationship(relationship_type)),
+            original_filename="internal-ole.docx",
+            client_media_type=DOCX_MEDIA_TYPE,
+            temporary_directory=tmp_path,
+            limits=ParseLimits(),
+        ) as staged,
+        pytest.raises(DocumentParseError) as error,
+    ):
+        parse_document(staged, ParseLimits())
+
+    assert error.value.code == "docx_active_content_unsupported"
 
 
 def test_docx_compression_ratio_limit_is_enforced_before_parsing(tmp_path: Path) -> None:

@@ -1,6 +1,7 @@
 """应用数据库连接池与会话入口。"""
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -9,7 +10,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.config import Settings
+
+class DatabaseSettings(Protocol):
+    database_url: str
+    database_pool_size: int
+    database_pool_timeout_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +25,7 @@ class Database:
     sessions: async_sessionmaker[AsyncSession]
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> "Database":
+    def from_settings(cls, settings: DatabaseSettings) -> "Database":
         """使用有界连接池创建数据库入口。"""
 
         engine = create_async_engine(
@@ -29,6 +34,7 @@ class Database:
             max_overflow=0,
             pool_timeout=settings.database_pool_timeout_seconds,
             pool_pre_ping=True,
+            hide_parameters=True,
         )
         return cls(
             engine=engine,

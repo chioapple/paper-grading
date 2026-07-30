@@ -146,6 +146,11 @@ export type AssignmentCreateInput = {
   scoreStep: string;
 };
 
+export type AssignmentUpdateInput = {
+  title: string;
+  instructions: string;
+};
+
 export type TeacherProviderModels = {
   provider_id: string;
   provider_name: string;
@@ -181,13 +186,237 @@ export type SubmissionDownload = {
   expires_in_seconds: number;
 };
 
+export type GradingJobCreated = {
+  id: string;
+  assignment_id: string;
+  status: GradingJobState;
+  total: number;
+};
+
+export type GradingItemState =
+  | "queued"
+  | "running"
+  | "needs_review"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type GradingJobState = GradingItemState | "paused";
+
+export type ReviewQueueItem = {
+  id: string;
+  submission_id: string;
+  original_filename: string;
+  position: number;
+  status: GradingItemState;
+  attempt_count: number;
+  error_code: string | null;
+  review_available: boolean;
+  review_id: string | null;
+  review_revision: number | null;
+  review_status: "draft" | "confirmed" | null;
+};
+
+export type ReviewJobSummary = {
+  id: string;
+  assignment_id: string;
+  assignment_title: string;
+  model: string;
+  status: GradingJobState;
+  total: number;
+  needs_review: number;
+  completed: number;
+  failed: number;
+  items: ReviewQueueItem[];
+  created_at: string;
+  finished_at: string | null;
+};
+
+export type EvidenceQuote = { block_id: string; quote: string };
+
+export type DimensionResult = {
+  dimension_id: string;
+  score: string;
+  reason: string;
+  evidence: EvidenceQuote[];
+  revision_suggestions: string[];
+};
+
+export type DeductionResult = {
+  deduction_id: string;
+  applied: boolean;
+  reason: string;
+  evidence: EvidenceQuote[];
+};
+
+export type ReviewEvidence = EvidenceQuote & {
+  target_type: "dimension" | "deduction";
+  target_id: string;
+};
+
+export type ReviewDraftInput = {
+  attempt_id: string;
+  criteria: Array<Omit<DimensionResult, "evidence">>;
+  deductions: Array<Omit<DeductionResult, "evidence">>;
+  evidence: ReviewEvidence[];
+  overall_feedback: string;
+  change_reason: string | null;
+};
+
+export type ReviewDraft = ReviewDraftInput & {
+  id: string;
+  revision_number: number;
+  status: "draft" | "confirmed";
+  subtotal: string;
+  deduction_total: string;
+  final_score: string;
+  confirmed_at: string | null;
+};
+
+export type DocumentBlock = {
+  block_id: string;
+  text: string;
+  locator:
+    | { kind: "pdf_text_block"; page: number; block: number; bbox: number[] }
+    | { kind: "docx_paragraph"; paragraph: number }
+    | {
+        kind: "docx_table_paragraph";
+        table: number;
+        row: number;
+        column: number;
+        paragraph: number;
+      };
+};
+
+export type ReviewDetail = {
+  job_id: string;
+  item_id: string;
+  item_status: GradingItemState;
+  assignment_id: string;
+  assignment_title: string;
+  assignment_instructions: string;
+  rubric_version_id: string;
+  rubric_version: number;
+  rubric: StructuredRubric;
+  submission_id: string;
+  original_filename: string;
+  document: {
+    schema_version: "document-blocks.v1";
+    parser_version: "1";
+    media_type: SubmissionMediaType;
+    page_count: number | null;
+    character_count: number;
+    blocks: DocumentBlock[];
+  };
+  attempt: {
+    id: string;
+    attempt_number: number;
+    scoring_round: number;
+    model: string;
+    subtotal: string;
+    deduction_total: string;
+    total_score: string;
+    dimensions: DimensionResult[];
+    deductions: DeductionResult[];
+    overall_feedback: string;
+  };
+  draft: ReviewDraft | null;
+};
+
+export type ReviewConfirmationRef = {
+  item_id: string;
+  review_id: string;
+  revision_number: number;
+};
+
+export type ReviewConfirmationResult = {
+  reviews: ReviewDraft[];
+  completed_job_ids: string[];
+};
+
+export type ExportType = "draft" | "final";
+export type ExportStatus = "queued" | "running" | "completed" | "failed";
+
+export type ExportView = {
+  id: string;
+  assignment_id: string;
+  assignment_title: string;
+  grading_job_id: string;
+  export_type: ExportType;
+  status: ExportStatus;
+  paper_count: number;
+  source_counts: Record<string, number>;
+  safe_filename: string | null;
+  error_code: string | null;
+  snapshot_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+};
+
+export type ExportDownload = {
+  download_url: string;
+  expires_in_seconds: number;
+  filename: string;
+};
+
 export interface AppApi {
+  listExports(session: BrowserSession): Promise<ExportView[]>;
+  createExport(
+    session: BrowserSession,
+    gradingJobId: string,
+    exportType: ExportType,
+    idempotencyKey: string,
+  ): Promise<ExportView>;
+  getExport(session: BrowserSession, exportId: string): Promise<ExportView>;
+  createExportDownload(
+    session: BrowserSession,
+    exportId: string,
+  ): Promise<ExportDownload>;
+  listReviewJobs(session: BrowserSession): Promise<ReviewJobSummary[]>;
+  getReview(
+    session: BrowserSession,
+    jobId: string,
+    itemId: string,
+  ): Promise<ReviewDetail>;
+  saveReviewDraft(
+    session: BrowserSession,
+    jobId: string,
+    itemId: string,
+    input: ReviewDraftInput,
+  ): Promise<ReviewDraft>;
+  confirmReview(
+    session: BrowserSession,
+    jobId: string,
+    itemId: string,
+    input: ReviewDraftInput,
+  ): Promise<ReviewConfirmationResult>;
+  confirmReviewBatch(
+    session: BrowserSession,
+    jobId: string,
+    reviews: ReviewConfirmationRef[],
+  ): Promise<ReviewConfirmationResult>;
+  regradeReview(
+    session: BrowserSession,
+    jobId: string,
+    itemId: string,
+  ): Promise<void>;
+  retryGradingItem(
+    session: BrowserSession,
+    jobId: string,
+    itemId: string,
+  ): Promise<void>;
   listAssignments(session: BrowserSession): Promise<AssignmentSummary[]>;
   createAssignment(
     session: BrowserSession,
     input: AssignmentCreateInput,
   ): Promise<AssignmentDetail>;
   getAssignment(session: BrowserSession, assignmentId: string): Promise<AssignmentDetail>;
+  updateAssignment(
+    session: BrowserSession,
+    assignmentId: string,
+    input: AssignmentUpdateInput,
+  ): Promise<AssignmentDetail>;
   listTeacherProviders(session: BrowserSession): Promise<TeacherProviderModels[]>;
   structureRubric(
     session: BrowserSession,
@@ -203,7 +432,7 @@ export interface AppApi {
   updateAssignmentStatus(
     session: BrowserSession,
     assignmentId: string,
-    status: "draft" | "archived",
+    action: "archive" | "restore",
   ): Promise<AssignmentDetail>;
   createRubricDraft(
     session: BrowserSession,
@@ -224,6 +453,12 @@ export interface AppApi {
     assignmentId: string,
     submissionId: string,
   ): Promise<SubmissionDownload>;
+  createGradingJob(
+    session: BrowserSession,
+    assignmentId: string,
+    submissionIds: string[],
+    idempotencyKey: string,
+  ): Promise<GradingJobCreated>;
   listTeachers(session: BrowserSession): Promise<TeacherAccount[]>;
   inviteTeacher(
     session: BrowserSession,

@@ -31,7 +31,9 @@ def get_provider_service(
     """装配加密、SSRF 防护和连接测试能力。"""
 
     settings = request.app.state.settings
-    url_policy = ProviderBaseUrlPolicy()
+    url_policy = ProviderBaseUrlPolicy(
+        allow_official_fake_ip=settings.allow_official_provider_fake_ip,
+    )
     return ProviderConfigService(
         repository=repository,
         cipher=ApiKeyCipher.from_base64_master_key(settings.provider_master_key.get_secret_value()),

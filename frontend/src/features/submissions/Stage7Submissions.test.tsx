@@ -81,13 +81,38 @@ function submission(filename: string, id: string): SubmissionView {
 
 class Stage7Api extends EmptyAppApi {
   uploaded: string[] = [];
+  savedSubmissions: SubmissionView[] = [];
+  gradingRequests: Array<{
+    assignmentId: string;
+    submissionIds: string[];
+    idempotencyKey: string;
+  }> = [];
 
   override async getAssignment() {
     return readyAssignment();
   }
 
   override async listSubmissions() {
-    return [];
+    return this.savedSubmissions;
+  }
+
+  async createGradingJob(
+    _session: typeof session,
+    selectedAssignmentId: string,
+    submissionIds: string[],
+    idempotencyKey: string,
+  ) {
+    this.gradingRequests.push({
+      assignmentId: selectedAssignmentId,
+      submissionIds,
+      idempotencyKey,
+    });
+    return {
+      id: "88888888-8888-4888-8888-888888888888",
+      assignment_id: selectedAssignmentId,
+      status: "queued" as const,
+      total: submissionIds.length,
+    };
   }
 
   override async uploadSubmission(
@@ -106,6 +131,58 @@ class Stage7Api extends EmptyAppApi {
 class RejectedStage7Api extends Stage7Api {
   override async uploadSubmission(): Promise<SubmissionUploadResult> {
     throw new ApiRequestError("rejected", 422, "docx_content_unsupported");
+  }
+}
+
+class PendingAssignmentStage7Api extends Stage7Api {
+  override async getAssignment(): Promise<AssignmentDetail> {
+    return await new Promise<AssignmentDetail>(() => undefined);
+  }
+}
+
+class RetryGradingStage7Api extends Stage7Api {
+  attempts: string[] = [];
+
+  override async createGradingJob(
+    selectedSession: typeof session,
+    selectedAssignmentId: string,
+    submissionIds: string[],
+    idempotencyKey: string,
+  ) {
+    this.attempts.push(idempotencyKey);
+    if (this.attempts.length === 1) {
+      throw new ApiRequestError(
+        "供应商当前配置不可用于评分",
+        409,
+        "grading_job_provider_invalid",
+      );
+    }
+    return super.createGradingJob(
+      selectedSession,
+      selectedAssignmentId,
+      submissionIds,
+      idempotencyKey,
+    );
+  }
+}
+
+class QuotaBlockedStage7Api extends Stage7Api {
+  override async createGradingJob(): Promise<never> {
+    throw new ApiRequestError(
+      "internal capacity detail",
+      507,
+      "database_quota_exceeded",
+    );
+  }
+}
+
+class QuotaUnavailableStage7Api extends Stage7Api {
+  override async createGradingJob(): Promise<never> {
+    throw new ApiRequestError(
+      "internal sampler detail",
+      503,
+      "database_usage_unavailable",
+    );
   }
 }
 
@@ -140,6 +217,13 @@ function renderStage7(api = new Stage7Api()) {
 }
 
 describe("阶段七论文上传", () => {
+  it("shows a loading state without falsely reporting an assignment failure", async () => {
+    renderStage7(new PendingAssignmentStage7Api());
+
+    expect(await screen.findByText("正在加载作业…")).toBeVisible();
+    expect(screen.queryByText("暂时无法加载作业。")).not.toBeInTheDocument();
+  });
+
   it("uploads valid files and keeps ready and duplicate results aligned", async () => {
     const api = renderStage7();
 
@@ -173,5 +257,83 @@ describe("阶段七论文上传", () => {
     expect(
       await screen.findByText("Word 文件含首版无法可靠提取的正文结构。"),
     ).toBeVisible();
+  });
+
+  it("selects ready papers and creates a grading job without manual UUID input", async () => {
+    const api = new Stage7Api();
+    api.savedSubmissions = [
+      submission("essay-one.docx", "77777777-7777-4777-8777-000000000001"),
+      submission("essay-two.pdf", "77777777-7777-4777-8777-000000000002"),
+    ];
+    renderStage7(api);
+
+    expect(await screen.findByText("essay-one.docx")).toBeVisible();
+    expect(screen.getByText("请先勾选已解析论文，再创建批改任务。创建后会立即调用已配置模型并产生相应费用。")).toBeVisible();
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择全部可批改论文" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建批改任务" }));
+
+    await waitFor(() => {
+      expect(api.gradingRequests).toHaveLength(1);
+      expect(api.gradingRequests[0]?.assignmentId).toBe(assignmentId);
+      expect(api.gradingRequests[0]?.submissionIds).toEqual([
+        "77777777-7777-4777-8777-000000000001",
+        "77777777-7777-4777-8777-000000000002",
+      ]);
+      expect(api.gradingRequests[0]?.idempotencyKey).toMatch(/^grading-job-/);
+      expect(screen.getByRole("heading", { name: "批改任务" })).toBeVisible();
+    });
+  });
+
+  it("keeps the same idempotency key when a failed grading request is retried", async () => {
+    const api = new RetryGradingStage7Api();
+    api.savedSubmissions = [
+      submission("essay.docx", "77777777-7777-4777-8777-000000000001"),
+    ];
+    renderStage7(api);
+
+    await screen.findByText("essay.docx");
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 essay.docx" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建批改任务" }));
+    expect(await screen.findByText("当前模型配置不可用于批改，请联系管理员检查后重试。")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "创建批改任务" }));
+    await waitFor(() => {
+      expect(api.attempts).toHaveLength(2);
+      expect(api.attempts[1]).toBe(api.attempts[0]);
+    });
+  });
+
+  it("shows a safe message when the database quota blocks a new grading job", async () => {
+    const api = new QuotaBlockedStage7Api();
+    api.savedSubmissions = [
+      submission("essay.docx", "77777777-7777-4777-8777-000000000001"),
+    ];
+    renderStage7(api);
+
+    await screen.findByText("essay.docx");
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 essay.docx" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建批改任务" }));
+
+    expect(
+      await screen.findByText("系统容量已达到安全上限，暂时不能创建新的评分批次。"),
+    ).toBeVisible();
+    expect(screen.queryByText("internal capacity detail")).not.toBeInTheDocument();
+  });
+
+  it("shows a safe message when remaining capacity cannot be verified", async () => {
+    const api = new QuotaUnavailableStage7Api();
+    api.savedSubmissions = [
+      submission("essay.docx", "77777777-7777-4777-8777-000000000001"),
+    ];
+    renderStage7(api);
+
+    await screen.findByText("essay.docx");
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 essay.docx" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建批改任务" }));
+
+    expect(
+      await screen.findByText("系统暂时无法确认剩余容量，请稍后重试。"),
+    ).toBeVisible();
+    expect(screen.queryByText("internal sampler detail")).not.toBeInTheDocument();
   });
 });
