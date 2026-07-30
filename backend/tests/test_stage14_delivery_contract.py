@@ -32,6 +32,11 @@ def test_ci_is_a_strict_non_deploying_gate_chain() -> None:
     assert "postgres:16" in workflow
     assert "alembic downgrade base" in workflow
     assert workflow.count("20260728_0019") >= 3
+    migration_setup = workflow.split(
+        "Prepare Supabase-owned schemas in the disposable database", 1
+    )[1].split("Replay empty database to 0018, 0019, base, and 0019", 1)[0]
+    for role in ("anon", "authenticated", "service_role"):
+        assert f"create role {role} nologin;" in migration_setup.lower()
     assert "--baseline .secrets.baseline" in workflow
     assert "--disable-plugin KeywordDetector" not in workflow
     assert "backend/migrations" in workflow

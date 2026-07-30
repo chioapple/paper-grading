@@ -147,6 +147,9 @@ jobs:
           PGPASSWORD: postgres # pragma: allowlist secret
         run: |
           psql --host 127.0.0.1 --username postgres --dbname paper_grading_ci --set ON_ERROR_STOP=1 <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          create role service_role nologin;
           create schema auth;
           create table auth.users (
             id uuid primary key,
