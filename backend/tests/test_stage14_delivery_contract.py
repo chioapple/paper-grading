@@ -181,8 +181,8 @@ def test_stage_fourteen_ci_acceptance_uses_public_actions_api_without_gh_login()
 
     assert "api.github.com/repos/${repo}/actions/workflows/ci.yml/runs" in section
     assert "api.github.com/repos/${repo}/actions/runs/${run_id}/jobs" in section
-    assert 'runs.length !== 1' in section
-    assert 'run.head_sha !== process.env.STAGE14_EXPECTED_SHA' in section
+    assert "runs.length !== 1" in section
+    assert "run.head_sha !== process.env.STAGE14_EXPECTED_SHA" in section
     assert 'run.status !== "completed"' in section
     assert 'run.conclusion !== "success"' in section
     assert "payload.total_count !== 8" in section
