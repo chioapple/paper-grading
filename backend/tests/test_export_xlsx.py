@@ -4,10 +4,12 @@ import hashlib
 import io
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 from openpyxl import load_workbook
+from openpyxl.writer import excel as openpyxl_excel
 
 from app.export.xlsx import (
     WorkbookSnapshot,
@@ -327,7 +329,29 @@ def test_all_external_text_categories_share_the_formula_injection_boundary() -> 
     assert not getattr(workbook, "_external_links", [])
 
 
-def test_same_frozen_snapshot_produces_identical_bytes_and_hash() -> None:
+def test_same_frozen_snapshot_produces_identical_bytes_and_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved_at = iter(
+        (
+            datetime(2026, 8, 23, 11, 36, 25, tzinfo=UTC),
+            datetime(2026, 8, 23, 11, 36, 26, tzinfo=UTC),
+        )
+    )
+
+    class AdvancingDateTime:
+        @classmethod
+        def now(cls, *, tz: object) -> datetime:
+            return next(saved_at)
+
+    monkeypatch.setattr(
+        openpyxl_excel,
+        "datetime",
+        SimpleNamespace(
+            datetime=AdvancingDateTime,
+            timezone=SimpleNamespace(utc=UTC),
+        ),
+    )
     first = build_export_workbook(snapshot())
     second = build_export_workbook(snapshot())
 

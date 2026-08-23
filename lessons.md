@@ -43,6 +43,8 @@
   `script_path` 等名称，并避免在共享终端启用会影响 session-save hook 的顶层 `set -u`。
 - 只面向 macOS 的运维脚本测试必须显式分层：Ubuntu CI 验证静态契约，目标 Mac 执行
   Tailscale、Homebrew 和 `launchctl` 行为。不能让跨平台 CI 假装拥有目标机系统工具。
+- 确定性文件测试不能连续调用两次后碰巧同秒通过；凡第三方库会在保存时注入当前时间，
+  必须在测试中强制推进时钟，并在最终归档字节层恢复冻结快照时间。
 - 真实 PostgreSQL 验收必须按用途分离连接：Alembic 回放使用 Direct URL，应用权限、RLS 和事务契约使用同项目 Supavisor Session Pooler 5432。TCP 端口成功不能证明 PostgreSQL TLS 握手稳定，也不能让普通权限测试反复依赖 IPv6 Direct 新连接。
 - `needs_review` 还可能表示模型调用结果未知或失败，不能据此断言存在可复核分数。列表和验收脚本必须检查当前 `dispatch_version` 是否有成功 attempt；无成功结果时只允许经过费用确认的原模型重评。
 - 任何对话只要要求重新打开本项目前端，都必须同时展开完整的启动顺序和命令：先检查 Redis 与端口，再启动 FastAPI，确认 `/health/live` 和 `/health/ready`，最后启动 Vite；不得只给前端网址或假定其他终端仍在运行。长期进程必须分别标明终端，已有健康进程时禁止重复启动。

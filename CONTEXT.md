@@ -28,8 +28,11 @@
   `backend/tests/test_supabase_storage.py` 本轮通过 30、失败 0，Sites 专项通过 2、失败 0；
   普通后端通过 499、失败 0，前端普通门禁通过 73、失败 0。macOS 运行契约只在目标机
   执行，Ubuntu CI 只收集静态契约，避免依赖 Tailscale、`launchctl` 和 Homebrew。
-  第一个完整部署门禁提交为 `b4bce79d2678e8b5587e3d0b1b55c98fc249ea44`，等待单独推送
-  并取得 CI 8/0 后作为回滚候选。第 3.3 节已改为使用公开仓库的 GitHub Actions 官方
+  第一个完整部署门禁提交 `b4bce79d2678e8b5587e3d0b1b55c98fc249ea44` 的 CI 第 4 项
+  暴露既有 XLSX 非确定性缺陷，因此不能作为回滚候选：`openpyxl` 保存时会用当前时间
+  覆盖固定的 `modified`，两次生成跨秒后字节和哈希不同。当前修复在 ZIP 规范化阶段把
+  `docProps/core.xml` 的修改时间恢复为冻结快照时间，并用强制跨秒时钟回归锁定；CI 同款
+  本地集成契约通过 144、失败 0。第 3.3 节已改为使用公开仓库的 GitHub Actions 官方
   只读 API，不再依赖本机 `gh` 登录；已用远端既有全绿 SHA 验证能够严格确认 8 个任务
   全部成功。真实生产 Tailscale、Sites、
   Supabase 写入和模型调用仍未执行；真实 E2E 的 `--resume`/`--postcondition` 当前仍会

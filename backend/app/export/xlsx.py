@@ -21,6 +21,7 @@ XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 SHEET_NAMES = ("Summary", "Criteria", "Feedback", "Metadata")
 ILLEGAL_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+CORE_MODIFIED = re.compile(rb"(<dcterms:modified\b[^>]*>)[^<]*(</dcterms:modified>)")
 
 
 class WorkbookValidationError(RuntimeError):
@@ -288,10 +289,11 @@ def _safe_filename(title: str, job_id: UUID, export_type: str, generated_at: dat
     return f"{cleaned}-{str(job_id)[:8]}-{export_type}-{stamp}.xlsx"
 
 
-def _canonicalize_xlsx(content: bytes) -> bytes:
+def _canonicalize_xlsx(content: bytes, *, workbook_time: datetime) -> bytes:
     """固定 ZIP 成员顺序和时间，保证同一冻结快照可安全重领。"""
 
     output = io.BytesIO()
+    modified_at = workbook_time.isoformat(timespec="seconds").encode("ascii") + b"Z"
     with (
         zipfile.ZipFile(io.BytesIO(content), "r") as source,
         zipfile.ZipFile(
@@ -303,12 +305,20 @@ def _canonicalize_xlsx(content: bytes) -> bytes:
     ):
         for name in sorted(source.namelist()):
             source_info = source.getinfo(name)
+            payload = source.read(name)
+            if name == "docProps/core.xml":
+                payload, replacements = CORE_MODIFIED.subn(
+                    lambda match: match.group(1) + modified_at + match.group(2),
+                    payload,
+                )
+                if replacements != 1:
+                    raise WorkbookValidationError("export_workbook_invalid")
             target_info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             target_info.compress_type = zipfile.ZIP_DEFLATED
             target_info.create_system = 0
             target_info.external_attr = 0
             target_info.comment = source_info.comment
-            destination.writestr(target_info, source.read(name), compresslevel=9)
+            destination.writestr(target_info, payload, compresslevel=9)
     return output.getvalue()
 
 
@@ -520,7 +530,7 @@ def build_export_workbook(
                     cell.number_format = "0.####"
     output = io.BytesIO()
     wb.save(output)
-    content = _canonicalize_xlsx(output.getvalue())
+    content = _canonicalize_xlsx(output.getvalue(), workbook_time=workbook_time)
     reopened = load_workbook(io.BytesIO(content), data_only=False, keep_links=True)
     if tuple(reopened.sheetnames) != SHEET_NAMES or getattr(reopened, "_external_links", []):
         raise WorkbookValidationError("export_workbook_invalid")
