@@ -173,6 +173,24 @@ def test_stage_fourteen_context_has_no_superseded_stage_five_blocker() -> None:
     assert "评分 Worker 丢失仍等待真实模型费用授权" not in context
 
 
+def test_stage_fourteen_ci_acceptance_uses_public_actions_api_without_gh_login() -> None:
+    acceptance = (PROJECT_ROOT / "docs/STAGE14_ACCEPTANCE.md").read_text(encoding="utf-8")
+    section = acceptance.split("### 3.3 提交、选择两个 SHA 并验证 GitHub CI", 1)[1].split(
+        "## 4. 第 1 步：首次私有 URL 引导", 1
+    )[0]
+
+    assert "api.github.com/repos/${repo}/actions/workflows/ci.yml/runs" in section
+    assert "api.github.com/repos/${repo}/actions/runs/${run_id}/jobs" in section
+    assert 'runs.length !== 1' in section
+    assert 'run.head_sha !== process.env.STAGE14_EXPECTED_SHA' in section
+    assert 'run.status !== "completed"' in section
+    assert 'run.conclusion !== "success"' in section
+    assert "payload.total_count !== 8" in section
+    assert 'job.conclusion !== "success"' in section
+    assert "gh repo view" not in section
+    assert "gh run" not in section
+
+
 def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     installer = (PROJECT_ROOT / "infra/local/install-launch-agents.sh").read_text(encoding="utf-8")
     runtime = (PROJECT_ROOT / "infra/local/verify-runtime.sh").read_text(encoding="utf-8")

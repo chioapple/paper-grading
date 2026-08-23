@@ -283,37 +283,67 @@ git cat-file -e "${candidate_sha}^{commit}"
 git cat-file -e "${rollback_sha}^{commit}"
 git merge-base --is-ancestor "$rollback_sha" origin/main
 
-repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+origin_url=$(git remote get-url origin)
+repo=$(STAGE14_ORIGIN_URL="$origin_url" node - <<'NODE'
+const origin = process.env.STAGE14_ORIGIN_URL;
+const match = origin.match(/github\.com(?::|\/)([^/:\s]+\/[^/\s]+?)(?:\.git)?$/);
+if (!match) process.exit(1);
+process.stdout.write(match[1]);
+NODE
+)
 tmp_dir=$(mktemp -d)
 trap '/bin/rm -rf "$tmp_dir"' EXIT
 
 for sha in "$candidate_sha" "$rollback_sha"; do
-  gh run list \
-    --repo "$repo" \
-    --workflow ci.yml \
-    --commit "$sha" \
-    --limit 1 \
-    --json databaseId,headSha,status,conclusion \
+  /usr/bin/curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --max-time 30 \
+    --retry 2 \
+    --header "Accept: application/vnd.github+json" \
+    --header "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=1" \
     >"$tmp_dir/run.json"
 
-  STAGE14_EXPECTED_SHA="$sha" STAGE14_JSON="$tmp_dir/run.json" node - <<'NODE'
+  run_id=$(STAGE14_EXPECTED_SHA="$sha" STAGE14_JSON="$tmp_dir/run.json" node - <<'NODE'
 const fs = require("node:fs");
-const rows = JSON.parse(fs.readFileSync(process.env.STAGE14_JSON, "utf8"));
+const payload = JSON.parse(fs.readFileSync(process.env.STAGE14_JSON, "utf8"));
+const runs = payload.workflow_runs;
+if (!Array.isArray(runs) || runs.length !== 1) process.exit(1);
+const run = runs[0];
 if (
-  rows.length !== 1 ||
-  rows[0].headSha !== process.env.STAGE14_EXPECTED_SHA ||
-  rows[0].status !== "completed" ||
-  rows[0].conclusion !== "success"
+  run.head_sha !== process.env.STAGE14_EXPECTED_SHA ||
+  run.status !== "completed" ||
+  run.conclusion !== "success" ||
+  !Number.isSafeInteger(run.id)
 ) process.exit(1);
+process.stdout.write(String(run.id));
 NODE
-  run_id=$(STAGE14_JSON="$tmp_dir/run.json" node -p \
-    'JSON.parse(require("node:fs").readFileSync(process.env.STAGE14_JSON,"utf8"))[0].databaseId')
+  )
 
-  gh run view "$run_id" --repo "$repo" --json jobs >"$tmp_dir/jobs.json"
+  /usr/bin/curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --max-time 30 \
+    --retry 2 \
+    --header "Accept: application/vnd.github+json" \
+    --header "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/${repo}/actions/runs/${run_id}/jobs?per_page=100" \
+    >"$tmp_dir/jobs.json"
   STAGE14_JSON="$tmp_dir/jobs.json" node - <<'NODE'
 const fs = require("node:fs");
-const jobs = JSON.parse(fs.readFileSync(process.env.STAGE14_JSON, "utf8")).jobs;
-if (jobs.length !== 8 || jobs.some((job) => job.conclusion !== "success")) process.exit(1);
+const payload = JSON.parse(fs.readFileSync(process.env.STAGE14_JSON, "utf8"));
+const jobs = payload.jobs;
+if (
+  payload.total_count !== 8 ||
+  !Array.isArray(jobs) ||
+  jobs.length !== 8 ||
+  jobs.some((job) => job.conclusion !== "success")
+) process.exit(1);
 NODE
 done
 
@@ -321,7 +351,9 @@ print "stage14_two_ci_green_shas=true"
 )
 ```
 
-预期固定标记为 `true`。不要回传 `gh` Token 或原始 JSON。
+预期固定标记为 `true`。当前 GitHub 仓库为公开仓库，因此这里通过官方只读 API 查询，
+不要求 `gh` 登录，也不要回传原始 JSON。若仓库以后改为私有，必须先重写本节的鉴权边界，
+不得把 Token 直接写入命令或文档。
 
 ## 4. 第 1 步：首次私有 URL 引导
 

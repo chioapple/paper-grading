@@ -29,7 +29,9 @@
   普通后端通过 499、失败 0，前端普通门禁通过 73、失败 0。macOS 运行契约只在目标机
   执行，Ubuntu CI 只收集静态契约，避免依赖 Tailscale、`launchctl` 和 Homebrew。
   第一个完整部署门禁提交为 `b4bce79d2678e8b5587e3d0b1b55c98fc249ea44`，等待单独推送
-  并取得 CI 8/0 后作为回滚候选。真实生产 Tailscale、Sites、
+  并取得 CI 8/0 后作为回滚候选。第 3.3 节已改为使用公开仓库的 GitHub Actions 官方
+  只读 API，不再依赖本机 `gh` 登录；已用远端既有全绿 SHA 验证能够严格确认 8 个任务
+  全部成功。真实生产 Tailscale、Sites、
   Supabase 写入和模型调用仍未执行；真实 E2E 的 `--resume`/`--postcondition` 当前仍会
   fail closed，付费流程前必须补齐。
 - 最终验收信号：用户于 2026-07-26 明确确认 `docs/STAGE12_ACCEPTANCE.md` 全部步骤执行通过，阶段 12 已完成。

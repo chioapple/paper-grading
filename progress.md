@@ -414,3 +414,6 @@
 - macOS 专用运维脚本的执行测试已增加平台边界：目标 Mac 真实执行，Ubuntu CI 只验证
   跨平台静态契约，不要求不存在的 Homebrew Tailscale 或 `launchctl`。完整实现提交为
   `b4bce79d2678e8b5587e3d0b1b55c98fc249ea44`，须先单独取得 CI 8/0，再发布后续候选提交。
+- 第 3.3 节移除本机 `gh` 登录依赖，改用公开仓库的 GitHub Actions 官方只读 API；使用
+  远端既有全绿 SHA 实测查询成功，并同时校验 workflow SHA、完成状态、成功结论以及恰好
+  8 个成功任务。仓库未来若改为私有，必须单独重写鉴权边界，不能把 Token 写入文档。
