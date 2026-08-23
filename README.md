@@ -127,6 +127,9 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 API、评分/维护 Worker、独立 Excel 导出 Worker、Tailscale、防休眠和 watchdog。
 本机 Redis 只作为 broker，业务状态仍以 PostgreSQL 为准。
 
+阶段 14 生产验收开始前，先在仓库根目录执行 `./infra/local/stage14-predeployment-gate.sh`；
+它只做代码门禁检查，成功固定输出 `stage14_predeployment_gate=true`。
+
 导出 Worker 也不接收通用 `DATABASE_URL`。`0017` 创建可登录、无初始密码的 `paper_grading_export_worker` 最小角色；部署者须在数据库侧单独设置强密码，并把该角色的 Supavisor session pooler 5432 地址仅注入 `EXPORT_DATABASE_URL`。该角色只能读冻结导出表并执行领取、完成和失败函数，不能读取供应商、作业、论文、评分 attempt 或教师复核来源表。
 
 评分/维护 Worker 同样不能使用 API 数据库角色。`0019` 把既有 `paper_grading_worker` 最小角色改为可登录，并只增加私有 schema 使用权与两个 Storage 配额函数执行权，不增加表权限或设置密码；部署者须在数据库侧交互设置独立强密码，并把 `paper_grading_worker.<project-ref>` 的 Supavisor session pooler 5432 地址仅注入评分 Worker 的 `DATABASE_URL`。

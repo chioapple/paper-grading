@@ -39,6 +39,10 @@
 - 多终端验收必须是一条资源安全的有序流程：迁移时停 API/前端/Worker，真实计费前保持 Worker 停止，重评后重新生成当前 attempt 草稿，HTTP 先断言状态再解析，结束时只清理本次 `mktemp` 目录。
 - 验收环境变量预检必须直接来自实际 Settings 模型和 `.env.example`；不得要求代码未读取的变量，也不能漏掉 Settings 中必需的破坏性操作确认值。
 - 多步骤共用的交互终端中，验收命令的 `set -e` 必须放在子 Shell 内；否则一次预期的预检失败会污染后续步骤，甚至直接关闭该终端。
+- zsh 中不要把 `path` 用作普通循环变量；它会同步覆盖 `PATH`。验收命令统一使用
+  `script_path` 等名称，并避免在共享终端启用会影响 session-save hook 的顶层 `set -u`。
+- 只面向 macOS 的运维脚本测试必须显式分层：Ubuntu CI 验证静态契约，目标 Mac 执行
+  Tailscale、Homebrew 和 `launchctl` 行为。不能让跨平台 CI 假装拥有目标机系统工具。
 - 真实 PostgreSQL 验收必须按用途分离连接：Alembic 回放使用 Direct URL，应用权限、RLS 和事务契约使用同项目 Supavisor Session Pooler 5432。TCP 端口成功不能证明 PostgreSQL TLS 握手稳定，也不能让普通权限测试反复依赖 IPv6 Direct 新连接。
 - `needs_review` 还可能表示模型调用结果未知或失败，不能据此断言存在可复核分数。列表和验收脚本必须检查当前 `dispatch_version` 是否有成功 attempt；无成功结果时只允许经过费用确认的原模型重评。
 - 任何对话只要要求重新打开本项目前端，都必须同时展开完整的启动顺序和命令：先检查 Redis 与端口，再启动 FastAPI，确认 `/health/live` 和 `/health/ready`，最后启动 Vite；不得只给前端网址或假定其他终端仍在运行。长期进程必须分别标明终端，已有健康进程时禁止重复启动。

@@ -61,7 +61,7 @@ flowchart TD
 | `backend/app/monitoring/` | 数据库与 Storage 配额计算、事务门禁、字节预留和稳定错误状态 |
 | `backend/app/maintenance/` | 默认关闭的保留状态机，以及目标无关的加密备份和恢复接口 |
 | `frontend/src/features/exports/` | 草稿/最终导出选择、状态轮询、失败说明、历史列表和短时下载入口 |
-| `infra/local/` | 常开 Mac 的 API、Worker、Tailscale、防休眠、watchdog 和 `launchd` 配置 |
+| `infra/local/` | 常开 Mac 的 API、Worker、Tailscale、防休眠、watchdog、release/current/shared 门禁脚本和 `launchd` 配置 |
 | `frontend/sites/` | Sites 静态资源代理、SPA 深层路径回退和前端安全响应头 |
 | `docs/design/` | App Shell 概念图和可执行视觉规范 |
 | `e2e/` | 本地 `/mock` 与显式授权真实环境分离的管理员、教师浏览器全流程测试 |
@@ -191,6 +191,6 @@ Supabase Auth 配置负责关闭注册入口，数据库触发器再用 `auth.us
 ## 6. 当前状态
 
 阶段 1 至阶段 13 已完成。阶段 14 第 6.2 节及之前已经完成；Sites 项目、前端适配和
-本机部署脚本已经建立。Tailscale 登录、Funnel、生产环境文件、`launchd` 真实运行、
-Sites 正式版本、告警和回滚仍待验收，阶段 14 保持进行中。自动清理、备份创建和备份
-清理继续关闭。
+本机部署脚本已经建立，第 3.2 节代码门禁现可返回 `stage14_predeployment_gate=true`。
+真实 Tailscale 登录、Funnel、生产环境文件、`launchd` 运行、Sites 正式版本、告警和
+回滚仍待验收，阶段 14 保持进行中。自动清理、备份创建和备份清理继续关闭。

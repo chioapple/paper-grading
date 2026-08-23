@@ -3,10 +3,35 @@
 - 当前正在做什么：阶段 14 第 6.2 节及之前已完成；个人非商业部署已经从 Render
   切换为 Sites 前端、常开 Mac 后端、本机 Redis、Tailscale Funnel、`launchd` 和
   UptimeRobot。Sites 项目已创建，前端 Sites 构建、SPA 深层路径和安全响应头回归通过
-  2、失败 0；本轮后端 491、前端 70、本地浏览器 2 和部署契约 14 项均通过、失败 0。
-  Tailscale CLI 已安装并启动 userspace 服务，等待用户确认服务条款后登录。
-  生产环境文件、本机进程、Funnel、Sites 正式版本、部署后冒烟、告警和回滚仍待验收，
-  阶段 14 保持进行中。
+  2、失败 0；发布候选 `eb2f360` 的 GitHub CI 通过 8、失败 0，本轮后端 491、前端
+  70、本地浏览器 2 和部署契约 14 项均通过、失败 0。`eb2f360` 只作既有基线，不是修复
+  部署门禁后的最终发布 SHA。Tailscale CLI 和 `0600` state 已准备，但 daemon 当前未
+  运行且 socket 已残留；生产环境文件和 LaunchAgent 均不存在。Sites 项目保持 owner-only，
+  当前保存版本为 0、无正式部署 URL。阶段 14 保持进行中。
+  `docs/STAGE14_ACCEPTANCE.md` 已在 2026-08-13 重写为可执行工作流，逐块标明终端、
+  Supabase SQL Editor、Dashboard、Sites 和授权边界。生产前硬门禁扩展为原子
+  release/current + shared 状态、Tailscale 生命周期、三个 Worker 真实恢复、watchdog
+  凭据边界、私有 Sites 同源 bypass 安全交接、E2E 防重跑/恢复和总超时，以及 Storage
+  bucket 50MiB/论文入口 20MiB/导出 50MiB 的统一契约、首次 LaunchAgent 半安装回滚和
+  网络异常时 API/Worker 全部 fail closed；门禁未通过时
+  连生产 `0019` 迁移也禁止执行，不得用当前工作树切换、公开 Sites 或口头判断代替。当前
+  文档可直接执行到第 3.2 节；完整生产流程仍须由新 SHA 的 CI 验证。2026-08-18 已在当前
+  工作树补齐第 3.2 节所需的本地门禁脚本与 release/env/shared 路径切换：
+  `stage14-predeployment-gate.sh`、`prepare-release.sh`、`validate-release.sh`、
+  `switch-release.sh`、`update-production-env.sh`、`tailscale-login.sh`、
+  `stage14-funnel.sh`、`run-stage14-e2e.sh` 已入库，`install-launch-agents.sh`、
+  `run-component.sh`、`run-tailscale.sh`、`verify-runtime.sh`、`watchdog.sh` 已改为走
+  `current`/`shared` 边界。用户给出的第 3.2 节命令现可本地返回
+  `stage14_predeployment_gate=true`；聚焦测试
+  `backend/tests/test_stage14_local_deployment_scripts.py`、
+  `backend/tests/test_stage14_delivery_contract.py` 和
+  `backend/tests/test_supabase_storage.py` 本轮通过 30、失败 0，Sites 专项通过 2、失败 0；
+  普通后端通过 499、失败 0，前端普通门禁通过 73、失败 0。macOS 运行契约只在目标机
+  执行，Ubuntu CI 只收集静态契约，避免依赖 Tailscale、`launchctl` 和 Homebrew。
+  第一个完整部署门禁提交为 `b4bce79d2678e8b5587e3d0b1b55c98fc249ea44`，等待单独推送
+  并取得 CI 8/0 后作为回滚候选。真实生产 Tailscale、Sites、
+  Supabase 写入和模型调用仍未执行；真实 E2E 的 `--resume`/`--postcondition` 当前仍会
+  fail closed，付费流程前必须补齐。
 - 最终验收信号：用户于 2026-07-26 明确确认 `docs/STAGE12_ACCEPTANCE.md` 全部步骤执行通过，阶段 12 已完成。
 - 阶段 12 最终迁移版本：`20260722_0017`；用户确认真实项目前向迁移和验收均已通过，真实项目不得为验收回退。
 - 阶段 12 本地代码：`0017` 原子冻结模型参数、批次和 `export_items`；导出进程只接受专用最小角色的 `EXPORT_DATABASE_URL`。同一快照生成完全相同的文件名、XLSX 字节和 SHA-256，600 秒租约长于 Worker 硬时限。完成竞争失败后，只有当前令牌能先原子转为 failed 才可删除本次新对象，失租旧 Worker 不删除；连续软超时或三次 Worker 丢失会持久化为明确失败，不会永久卡在 running。

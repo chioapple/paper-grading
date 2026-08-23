@@ -400,3 +400,17 @@
 - 新方案本地门禁通过：后端 491 项、前端 70 项、Sites 专项 2 项、本地桌面/手机浏览器
   2 项和部署契约目标回归 14 项通过，失败 0；Ruff、格式、严格 mypy、前端 lint、类型
   检查、Sites 打包、仓库密钥扫描和差异检查通过。
+
+## 2026-08-18
+
+- 补齐阶段 14 第 3.2 节所需的 11 个本地可执行入口，并把运行路径统一为不可变
+  `releases/<SHA>`、原子 `current` 与可写 `shared`；门禁真实执行 Shell 语法、Python 配置
+  导入和前端类型检查，固定输出 `stage14_predeployment_gate=true`。
+- 修复 zsh 验收块使用特殊变量 `path` 导致 `PATH` 被覆盖的问题，循环变量改为
+  `script_path`；同时移除外层 `set -u`，避免 macOS 终端 session-save hook 产生无关错误。
+- 聚焦阶段 14 回归通过 30、失败 0，Sites 专项通过 2、失败 0；普通后端通过 499、失败 0，
+  前端普通门禁通过 73、失败 0；Ruff、严格 mypy、前端 lint/typecheck 和差异检查通过。
+  未执行任何真实 Supabase、Sites、Tailscale、LaunchAgent 或模型写入。
+- macOS 专用运维脚本的执行测试已增加平台边界：目标 Mac 真实执行，Ubuntu CI 只验证
+  跨平台静态契约，不要求不存在的 Homebrew Tailscale 或 `launchctl`。完整实现提交为
+  `b4bce79d2678e8b5587e3d0b1b55c98fc249ea44`，须先单独取得 CI 8/0，再发布后续候选提交。

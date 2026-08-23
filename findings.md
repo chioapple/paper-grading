@@ -223,4 +223,13 @@
 - 阶段 13 已按用户决定完成“备份和自动清理保持关闭”的验收。阶段 14 只验证部署环境没有误启用这些能力，真实恢复不再作为本阶段完成条件；未来启用时必须单独授权和验收，当前不得宣称已有应用级独立恢复能力。
 - 回滚验收不是停在旧 SHA。必须先回到已验证兼容 `0019` 的 SHA并完成健康检查，再恢复本轮发布候选；否则验收会把生产环境留在非目标版本。
 - GitHub Actions 的普通 PostgreSQL 镜像不包含 Supabase 平台角色。只创建 `auth`、`storage` schema 和占位表不足以回放含 `GRANT/REVOKE ... TO anon/authenticated/service_role` 的迁移；一次性数据库必须在运行 Alembic 前显式创建这三个角色。该修复只补齐 CI 的 Supabase 外部前置，不修改任何已发布迁移。
+- zsh 的小写 `path` 是与 `PATH` 绑定的特殊数组；验收块使用 `for path in ...` 会在循环后
+  把命令搜索路径覆盖成最后一个脚本名，导致随后执行脚本时报 `dirname: command not found`。
+  可复制 zsh 命令必须使用 `script_path` 等普通变量名，并用回归测试锁定。
+- 部署前门禁不能只在脚本自身 grep 关键字，因为 grep 命令本身就含有该关键字，会形成
+  恒真自检。当前门禁改为执行脚本语法、依赖存在性、Python 导入和前端类型检查；生产
+  外部状态仍由后续步骤单独验收。
+- GitHub CI 运行在 Ubuntu，而阶段 14 运维入口明确只服务 macOS 目标机。跨平台 CI 应
+  收集文件、权限和静态边界；Tailscale、Homebrew、`launchctl`、真实 symlink 切换等执行
+  契约只在目标 Mac 运行。否则 CI 会因平台不存在的系统工具失败，而不是发现业务回归。
 - `alembic current` 在非 head revision 只输出 revision ID，在 head 可能追加 `(head)`。用“revision 后必须有空格”匹配中间版本会在升级成功后假红；中间版本应整行精确匹配，最终版本只允许可选的 `(head)` 标记。
