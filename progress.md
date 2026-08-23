@@ -424,3 +424,5 @@
 - XLSX 修复提交 `3e469293b7b9677ea65f6a39dac8f0494bd92d9b` 的 CI 第 1 项又发现
   `test_stage14_delivery_contract.py` 未被此前局部 Ruff 检查覆盖；已使用 CI 完整目录范围
   复现并格式化。该失败 SHA 同样不得作为第 3.3 节候选。
+- 修复并完整格式化后的提交 `7302f1e5a16fd3b113149098a94238bbfe20acdb` 已由 GitHub
+  CI 确认 8 项通过、失败 0，作为第 3.3 节回滚 SHA；下一提交只记录这项验收结果。

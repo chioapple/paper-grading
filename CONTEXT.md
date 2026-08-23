@@ -36,7 +36,9 @@
   只读 API，不再依赖本机 `gh` 登录；已用远端既有全绿 SHA 验证能够严格确认 8 个任务
   全部成功。首个 XLSX 修复提交 `3e469293b7b9677ea65f6a39dac8f0494bd92d9b` 又由 CI
   第 1 项发现阶段 14 契约测试未覆盖在此前的局部 Ruff 格式检查中，因此也不能作为回滚
-  候选；该文件已按 CI 的完整目录范围格式化。真实生产 Tailscale、Sites、
+  候选；该文件已按 CI 的完整目录范围格式化。修复后的提交
+  `7302f1e5a16fd3b113149098a94238bbfe20acdb` 已由 GitHub CI 确认 8 项通过、失败 0，
+  可作为第 3.3 节回滚 SHA。真实生产 Tailscale、Sites、
   Supabase 写入和模型调用仍未执行；真实 E2E 的 `--resume`/`--postcondition` 当前仍会
   fail closed，付费流程前必须补齐。
 - 最终验收信号：用户于 2026-07-26 明确确认 `docs/STAGE12_ACCEPTANCE.md` 全部步骤执行通过，阶段 12 已完成。
