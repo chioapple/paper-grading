@@ -3,6 +3,8 @@ import { basename, isAbsolute } from "node:path";
 
 import { expect, test, type Page } from "../frontend/node_modules/@playwright/test";
 
+import { applySitesBypassHeader } from "./stage14-sites-bypass";
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`真实浏览器验收缺少 ${name}`);
@@ -46,14 +48,17 @@ const totalScore = required("E2E_REAL_TOTAL_SCORE");
 const scoreStep = required("E2E_REAL_SCORE_STEP");
 
 test("一个真实批次完成桌面流程、手机复用和双教师隔离", async ({ page }) => {
-  const browserMessages: string[] = [];
+  let browserErrorCount = 0;
   page.on("console", (message) => {
     if (message.type() === "error" || message.type() === "warning") {
-      browserMessages.push(`${message.type()}: ${message.text()}`);
+      browserErrorCount += 1;
     }
   });
-  page.on("pageerror", (error) => browserMessages.push(`pageerror: ${error.message}`));
+  page.on("pageerror", () => {
+    browserErrorCount += 1;
+  });
 
+  await applySitesBypassHeader(page);
   await login(page, teacherEmail, teacherPassword);
 
   await page.getByRole("link", { name: "创建作业" }).first().click();
@@ -127,7 +132,12 @@ test("一个真实批次完成桌面流程、手机复用和双教师隔离", as
   };
   expect(downloadPayload.expires_in_seconds).toBeGreaterThan(0);
   await page.waitForTimeout((downloadPayload.expires_in_seconds + 5) * 1_000);
-  const expiredDownload = await page.request.get(downloadPayload.download_url);
+  let expiredDownload;
+  try {
+    expiredDownload = await page.request.get(downloadPayload.download_url);
+  } catch {
+    throw new Error("stage14_signed_url_expiry_probe_failed");
+  }
   expect(expiredDownload.status()).toBeGreaterThanOrEqual(400);
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -151,5 +161,5 @@ test("一个真实批次完成桌面流程、手机复用和双教师隔离", as
   await page.goto(`/exports?jobId=${jobId}`);
   await expect(page.getByText(assignmentTitle, { exact: true })).toHaveCount(0);
 
-  expect(browserMessages).toEqual([]);
+  expect(browserErrorCount).toBe(0);
 });

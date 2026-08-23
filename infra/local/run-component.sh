@@ -1,19 +1,31 @@
 #!/bin/zsh
 set -euo pipefail
 
-PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-COMMON_ENV="$PROJECT_ROOT/.env.stage14-production"
-GRADING_ENV="$PROJECT_ROOT/.env.stage14-grading-worker"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && /bin/pwd -P)
+source "$SCRIPT_DIR/stage14-runtime-common.sh"
+
+if [[ "${1:-}" = "--self-check" ]]; then
+  typeset -f stage14_env_dir >/dev/null
+  typeset -f stage14_state_dir >/dev/null
+  stage14_self_check_ok
+fi
+
+CURRENT_ROOT=$(stage14_resolve_symlink_target "$(stage14_current_root)")
+COMMON_ENV="$(stage14_env_dir)/production.env"
+GRADING_ENV="$(stage14_env_dir)/grading-worker.env"
+export PYTHONDONTWRITEBYTECODE=1
+
+# shared/env/production.env 与 shared/env/grading-worker.env 是唯一环境来源。
 
 load_environment() {
   local file_path=$1
-  test -f "$file_path"
+  stage14_require_regular_file "$file_path"
   set -a
   source "$file_path"
   set +a
 }
 
-test -x "$PROJECT_ROOT/.venv/bin/python"
+test -x "$CURRENT_ROOT/.venv/bin/python"
 load_environment "$COMMON_ENV"
 
 case "${1:-}" in
@@ -23,14 +35,12 @@ case "${1:-}" in
     unset VITE_SUPABASE_URL
     unset VITE_SUPABASE_PUBLISHABLE_KEY
     unset UPTIMEROBOT_HEARTBEAT_URL
-    cd "$PROJECT_ROOT/backend"
-    exec "$PROJECT_ROOT/.venv/bin/uvicorn" \
-      app.main:app \
-      --host 127.0.0.1 \
-      --port 8000
+    cd "$CURRENT_ROOT/backend"
+    exec "$CURRENT_ROOT/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port 8000
     ;;
   grading)
     load_environment "$GRADING_ENV"
+    export CELERYBEAT_SCHEDULE_FILENAME="$(stage14_state_dir)/celerybeat-schedule"
     unset EXPORT_DATABASE_URL
     unset SUPABASE_PUBLISHABLE_KEY
     unset AUTH_INVITE_REDIRECT_URL
@@ -39,8 +49,8 @@ case "${1:-}" in
     unset VITE_SUPABASE_URL
     unset VITE_SUPABASE_PUBLISHABLE_KEY
     unset UPTIMEROBOT_HEARTBEAT_URL
-    cd "$PROJECT_ROOT/backend"
-    exec "$PROJECT_ROOT/.venv/bin/python" -m app.workers.supervisor
+    cd "$CURRENT_ROOT/backend"
+    exec "$CURRENT_ROOT/.venv/bin/python" -m app.workers.supervisor
     ;;
   export)
     unset PROVIDER_MASTER_KEY
@@ -52,8 +62,8 @@ case "${1:-}" in
     unset VITE_SUPABASE_URL
     unset VITE_SUPABASE_PUBLISHABLE_KEY
     unset UPTIMEROBOT_HEARTBEAT_URL
-    cd "$PROJECT_ROOT/backend"
-    exec "$PROJECT_ROOT/.venv/bin/celery" \
+    cd "$CURRENT_ROOT/backend"
+    exec "$CURRENT_ROOT/.venv/bin/celery" \
       -A app.export.celery_app:celery_app \
       worker \
       --loglevel=INFO \

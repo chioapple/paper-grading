@@ -1,37 +1,18 @@
 #!/bin/zsh
 set -euo pipefail
 
-PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-STATE_DIR="$PROJECT_ROOT/tmp/tailscale"
-SOCKET="$STATE_DIR/tailscaled.sock"
-STATE_FILE="$STATE_DIR/tailscaled.state"
-DAEMON=/opt/homebrew/opt/tailscale/bin/tailscaled
-CLIENT=/opt/homebrew/bin/tailscale
+SCRIPT_DIR=$(cd "$(dirname "$0")" && /bin/pwd -P)
+source "$SCRIPT_DIR/stage14-runtime-common.sh"
 
-mkdir -p "$STATE_DIR"
-chmod 700 "$STATE_DIR"
-test -x "$DAEMON"
-test -x "$CLIENT"
-test -f "$STATE_FILE"
+SOCKET="$(stage14_tailscale_socket)"
+STATE_FILE="$(stage14_tailscale_state)"
+PIDFILE="$(stage14_tailscale_pidfile)"
+DAEMON="${STAGE14_TAILSCALE_DAEMON_BIN:-/opt/homebrew/opt/tailscale/bin/tailscaled}"
 
-"$DAEMON" \
-  --tun=userspace-networking \
-  --socket="$SOCKET" \
-  --state="$STATE_FILE" &
-daemon_pid=$!
+stage14_install_secure_dir "$(stage14_tailscale_dir)" 700
+touch "$STATE_FILE"
+chmod 600 "$STATE_FILE"
+print -r -- "$$" >"$PIDFILE"
+chmod 600 "$PIDFILE"
 
-shutdown() {
-  kill "$daemon_pid" 2>/dev/null || true
-  wait "$daemon_pid" 2>/dev/null || true
-}
-trap shutdown EXIT INT TERM
-
-for _ in {1..30}; do
-  test -S "$SOCKET" && break
-  sleep 1
-done
-test -S "$SOCKET"
-
-"$CLIENT" --socket="$SOCKET" status >/dev/null
-"$CLIENT" --socket="$SOCKET" funnel --bg 8000 >/dev/null
-wait "$daemon_pid"
+exec "$DAEMON" --tun=userspace-networking --socket="$SOCKET" --state="$STATE_FILE"

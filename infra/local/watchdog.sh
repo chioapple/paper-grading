@@ -1,10 +1,18 @@
 #!/bin/zsh
 set -euo pipefail
 
-PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-set -a
-source "$PROJECT_ROOT/.env.stage14-production"
-set +a
+SCRIPT_DIR=$(cd "$(dirname "$0")" && /bin/pwd -P)
+source "$SCRIPT_DIR/stage14-runtime-common.sh"
+
+if [[ "${1:-}" = "--self-check" ]]; then
+  test -x /usr/bin/curl
+  command -v mktemp >/dev/null
+  typeset -f stage14_env_dir >/dev/null
+  stage14_self_check_ok
+fi
+
+stage14_load_env_file "$(stage14_env_dir)/production.env"
+current_root=$(stage14_resolve_symlink_target "$(stage14_current_root)")
 
 test -n "${UPTIMEROBOT_HEARTBEAT_URL:?missing UPTIMEROBOT_HEARTBEAT_URL}"
 case "$UPTIMEROBOT_HEARTBEAT_URL" in
@@ -25,14 +33,21 @@ unset VITE_API_BASE_URL
 unset VITE_SUPABASE_URL
 unset VITE_SUPABASE_PUBLISHABLE_KEY
 
-test "$(/opt/homebrew/bin/redis-cli ping)" = "PONG"
+test "$(/opt/homebrew/bin/redis-cli -u "$REDIS_URL" ping)" = "PONG"
 curl --fail --silent --show-error http://127.0.0.1:8000/health/ready >/dev/null
 
-worker_status=$(
-  "$PROJECT_ROOT/.venv/bin/celery" -b "$REDIS_URL" inspect ping --timeout 10
-)
+worker_status="$("$current_root/.venv/bin/celery" -b "$REDIS_URL" inspect ping --json --timeout 10)"
 for worker in grading maintenance exports; do
-  print "$worker_status" | rg -q "$worker@"
+  print -rn -- "$worker_status" | /usr/bin/grep -Fq "${worker}@"
 done
 
-curl --fail --silent --show-error "$UPTIMEROBOT_HEARTBEAT_URL" >/dev/null
+curl_config="$(mktemp)"
+trap '/bin/rm -f "$curl_config"' EXIT
+chmod 600 "$curl_config"
+{
+  print 'silent'
+  print 'show-error'
+  print 'fail'
+  print "url = \"${UPTIMEROBOT_HEARTBEAT_URL}\""
+} >"$curl_config"
+curl --config "$curl_config" >/dev/null

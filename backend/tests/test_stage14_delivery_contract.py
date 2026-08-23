@@ -1,5 +1,9 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).parents[2]
 
@@ -86,7 +90,7 @@ def test_sites_and_local_deployment_keep_public_and_secret_boundaries_separate()
     assert "unset DATABASE_URL" in export_section
     watchdog = (PROJECT_ROOT / "infra/local/watchdog.sh").read_text(encoding="utf-8")
     assert "unset PROVIDER_MASTER_KEY" in watchdog
-    assert '"$PROJECT_ROOT/.venv/bin/celery" -b "$REDIS_URL"' in watchdog
+    assert '.venv/bin/celery" -b "$REDIS_URL"' in watchdog
     assert "-A app.workers.celery_app:celery_app" not in watchdog
     assert 'local label="com.paper-grading.$component"' in launch_installer
     for component in ("api", "grading", "export"):
@@ -109,7 +113,12 @@ def test_browser_and_runbook_boundaries_are_explicit() -> None:
     assert "I_ACCEPT_ONE_COMPLETE_MODEL_FLOW" in real_flow
     assert "I_ACCEPT_TWO_MODEL_BATCHES" not in real_flow
     assert real_flow.count('name: "创建批改任务"') == 1
+    assert "applySitesBypassHeader" in real_flow
     assert "setViewportSize({ width: 390, height: 844 })" in real_flow
+    assert "stage14-playwright-reporter" in real_config
+    assert "outputDir:" in real_config
+    assert "STAGE14_E2E_OUTPUT_DIR" in real_config
+    assert "timeout: 1_800_000" in real_config
     assert real_config.count('name: "real-chromium"') == 1
     assert "mobile-chromium" not in real_config
     assert "create_job_count=1" in boundary
@@ -162,3 +171,93 @@ def test_stage_fourteen_context_has_no_superseded_stage_five_blocker() -> None:
     assert "第 6.1 节及之前全部完成" in context
     assert "第 5 节尚不能宣称全部完成" not in context
     assert "评分 Worker 丢失仍等待真实模型费用授权" not in context
+
+
+def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
+    installer = (PROJECT_ROOT / "infra/local/install-launch-agents.sh").read_text(encoding="utf-8")
+    runtime = (PROJECT_ROOT / "infra/local/verify-runtime.sh").read_text(encoding="utf-8")
+    watchdog = (PROJECT_ROOT / "infra/local/watchdog.sh").read_text(encoding="utf-8")
+    component_runner = (PROJECT_ROOT / "infra/local/run-component.sh").read_text(encoding="utf-8")
+    predeployment_gate = (PROJECT_ROOT / "infra/local/stage14-predeployment-gate.sh").read_text(
+        encoding="utf-8"
+    )
+    release_preparer = (PROJECT_ROOT / "infra/local/prepare-release.sh").read_text(encoding="utf-8")
+    env_updater = (PROJECT_ROOT / "infra/local/update-production-env.sh").read_text(
+        encoding="utf-8"
+    )
+    funnel = (PROJECT_ROOT / "infra/local/stage14-funnel.sh").read_text(encoding="utf-8")
+    tailscale = (PROJECT_ROOT / "infra/local/tailscale-login.sh").read_text(encoding="utf-8")
+    e2e_runner = (PROJECT_ROOT / "infra/local/run-stage14-e2e.sh").read_text(encoding="utf-8")
+    runtime_common = (PROJECT_ROOT / "infra/local/stage14-runtime-common.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Library/Application Support/Paper Grading" in runtime_common
+    assert "stage14_env_dir" in installer
+    assert "stage14_logs_dir" in installer
+    assert "CURRENT_ROOT/infra/local/run-component.sh" in installer
+    assert "--rollback-first-install" in installer
+    assert "stage14_first_install_rollback=true" in installer
+    assert "stage14_local_runtime_verified=true" in runtime
+    assert "stage14_state_dir" in runtime
+    assert "funnel status --json" in runtime
+    assert "curl --config" in watchdog
+    assert "heartbeat.uptimerobot.com" in watchdog
+    assert "shared/env/production.env" in component_runner
+    assert "CELERYBEAT_SCHEDULE_FILENAME" in component_runner
+    assert "stage14_predeployment_gate=true" in predeployment_gate
+    assert "--self-check" in predeployment_gate
+    assert "releases/$sha" in release_preparer
+    assert ".release-manifest.json" in runtime_common
+    assert "SEALED" in runtime_common
+    assert "shared_bin/switch-release.sh" in release_preparer
+    assert "--env-dir" in env_updater
+    assert "production.env" in env_updater
+    assert "grading-worker.env" in env_updater
+    assert "serve get-config" in funnel
+    assert "serve set-config" in funnel
+    assert "funnel status --json" in funnel
+    assert 'payload.get("BackendState") != "Running"' in tailscale
+    assert "tailscaled.pid" in runtime_common
+    assert "--start" in e2e_runner
+    assert "--resume" in e2e_runner
+    assert "--postcondition" in e2e_runner
+    assert "O_EXCL" in e2e_runner
+    assert "STAGE14_E2E_OUTPUT_DIR" in e2e_runner
+    assert "stage14_e2e_started=true" in e2e_runner
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="阶段 14 本机部署门禁只在 macOS 目标机执行",
+)
+def test_stage14_predeployment_gate_contract_scripts_exist_and_pass() -> None:
+    required_executables = [
+        "infra/local/stage14-predeployment-gate.sh",
+        "infra/local/prepare-release.sh",
+        "infra/local/validate-release.sh",
+        "infra/local/switch-release.sh",
+        "infra/local/update-production-env.sh",
+        "infra/local/run-stage14-e2e.sh",
+        "infra/local/stage14-funnel.sh",
+        "infra/local/tailscale-login.sh",
+        "infra/local/install-launch-agents.sh",
+        "infra/local/verify-runtime.sh",
+        "infra/local/watchdog.sh",
+    ]
+
+    for relative_path in required_executables:
+        path = PROJECT_ROOT / relative_path
+        assert path.exists(), f"缺少阶段 14 部署门禁脚本：{relative_path}"
+        assert path.stat().st_mode & 0o111, f"脚本不可执行：{relative_path}"
+
+    completed = subprocess.run(
+        [str(PROJECT_ROOT / "infra/local/stage14-predeployment-gate.sh")],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "stage14_predeployment_gate=true"

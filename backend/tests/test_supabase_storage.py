@@ -10,9 +10,11 @@ from uuid import UUID
 import httpx
 import pytest
 
+from app.export.xlsx import XLSX_MEDIA_TYPE
 from app.monitoring.repository import QuotaExceededError, QuotaGateResult
 from app.parsing.models import PDF_MEDIA_TYPE
 from app.storage.supabase import (
+    MAX_EXPORT_BYTES,
     SupabaseObjectStorage,
     SupabaseStorageError,
     build_submission_object_keys,
@@ -201,11 +203,12 @@ def test_supabase_storage_uses_server_keys_streaming_upsert_and_signed_urls(
                 200,
                 json={
                     "public": False,
-                    "file_size_limit": 20 * 1024 * 1024,
+                    "file_size_limit": 50 * 1024 * 1024,
                     "allowed_mime_types": [
                         PDF_MEDIA_TYPE,
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         "application/json",
+                        XLSX_MEDIA_TYPE,
                     ],
                 },
             )
@@ -232,11 +235,12 @@ def test_supabase_storage_uses_server_keys_streaming_upsert_and_signed_urls(
             )
             url = await storage.create_download_url(keys.source)
             await storage.require_private_bucket(
-                expected_file_size_limit_bytes=20 * 1024 * 1024,
+                expected_file_size_limit_bytes=50 * 1024 * 1024,
                 expected_allowed_mime_types={
                     PDF_MEDIA_TYPE,
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     "application/json",
+                    XLSX_MEDIA_TYPE,
                 },
             )
             await storage.delete(keys.source)
@@ -574,9 +578,47 @@ def test_supabase_storage_rejects_misconfigured_private_bucket() -> None:
                 signed_url_ttl_seconds=60,
             )
             await storage.require_private_bucket(
-                expected_file_size_limit_bytes=20 * 1024 * 1024,
-                expected_allowed_mime_types={PDF_MEDIA_TYPE, "application/json"},
+                expected_file_size_limit_bytes=50 * 1024 * 1024,
+                expected_allowed_mime_types={
+                    PDF_MEDIA_TYPE,
+                    "application/json",
+                    XLSX_MEDIA_TYPE,
+                },
             )
 
     with pytest.raises(SupabaseStorageError, match="文件大小限制"):
         asyncio.run(scenario())
+
+
+def test_export_file_size_boundary_remains_fifty_megabytes(tmp_path: Path) -> None:
+    content = b"stage14-export"
+    path = tmp_path / "workbook.xlsx"
+    path.write_bytes(content)
+    file_hash = hashlib.sha256(content).digest()
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={})
+
+    async def scenario() -> bool:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            storage = SupabaseObjectStorage(
+                client=client,
+                storage_url="https://test-project.supabase.co/storage/v1",
+                secret_key=SECRET_KEY,
+                bucket_name="paper-grading-test",
+                signed_url_ttl_seconds=60,
+            )
+            return await storage.put_file_once(
+                "exports/id/workbook.xlsx",
+                path,
+                media_type=XLSX_MEDIA_TYPE,
+                content_sha256=file_hash,
+            )
+
+    created = asyncio.run(scenario())
+
+    assert created is True
+    assert MAX_EXPORT_BYTES == 50 * 1024 * 1024
+    assert requests[0].headers["content-type"] == XLSX_MEDIA_TYPE
