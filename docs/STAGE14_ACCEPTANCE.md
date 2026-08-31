@@ -19,7 +19,7 @@
 | 历史候选 SHA CI | `71e377c251958fdd943a5f982bd9db4741a98db2`：8/8 通过，但不含最新部署脚本修复 | 不得作为最终候选 |
 | 失败候选 SHA CI | `27c67ac`：前 7 项通过，第 8 项 Git SHA 高熵误判；已在本地修复 | 不得使用或 rerun |
 | 上一绿色候选 SHA CI | `d99dd5f`：8/8 通过，但仍会预建空 Tailscale 状态 | 不得作为最终候选 |
-| Tailscale 修复候选 CI | 尚未生成提交 | 提交后必须 8/8 通过 |
+| Tailscale 修复候选 CI | `29a59b9ab88c1a78ffaaeb07862fa6e1bc729443`：精确 SHA、8/8 通过 | 当前代码基线；本次文档修正提交后仍须取得新 SHA 的 8/8 |
 | 回滚 SHA CI | `7302f1e5a16fd3b113149098a94238bbfe20acdb`：8/8 通过 | 不需要 |
 | PostgreSQL、Auth、Storage、Redis、Worker、供应商、100 篇结构证据 | 已完成 | 禁止在生产重复做破坏性测试或 100 次模型调用 |
 | 生产部署、真实单篇业务流、告警、回滚 | 未执行 | 按下列节点执行 |
@@ -75,13 +75,13 @@ print "stage14_local_candidate_gate=true"
 | 历史候选 SHA GitHub CI | 8 | 0 |
 | 回滚 SHA GitHub CI | 8 | 0 |
 
-`d99dd5f` 已精确取得 8/8 CI，但节点 2.1 真实运行发现它仍会预建 0 字节 Tailscale 状态文件。该问题已在本地修复；旧提交内容不可改变，不要 rerun。Tailscale 修复提交和新 CI 完成前，节点 1 重新判定为未通过。
+`d99dd5f` 已精确取得 8/8 CI，但节点 2.1 真实运行发现它仍会预建 0 字节 Tailscale 状态文件。修复提交 `29a59b9ab88c1a78ffaaeb07862fa6e1bc729443` 已由 GitHub Actions 官方 API 核对为精确 SHA、8 个 jobs 全部 success。由于本次又修正了验收文档和项目记录，必须提交这些修正并以新 SHA 再取得 8/8，才能进入节点 2。
 
 ### 1.2 生成并推送新候选
 
-先执行 `git status --short`，人工确认只包含本轮 10 个文件：`CONTEXT.md`、`backend/tests/test_stage14_local_deployment_scripts.py`、`docs/STAGE14_ACCEPTANCE.md`、四个 Tailscale/LaunchAgent 脚本、`lessons.md`、`progress.md`、`task_plan.md`。若出现其他文件，停止，不要提交。
+先执行 `git status --short`，人工确认只包含本轮 5 个文档文件：`CONTEXT.md`、`docs/STAGE14_ACCEPTANCE.md`、`lessons.md`、`progress.md`、`task_plan.md`。若出现其他文件，停止，不要提交。
 
-用户确认允许提交和推送后，在终端 A执行：
+用户确认允许提交和推送后，先在终端 A执行提交块。提交成功后不要再次执行此块：
 
 ```zsh
 (
@@ -90,19 +90,27 @@ cd "/Users/a1-6/Documents/Paper Grading"
 test "$(git branch --show-current)" = "main"
 git add -- \
   CONTEXT.md \
-  backend/tests/test_stage14_local_deployment_scripts.py \
   docs/STAGE14_ACCEPTANCE.md \
-  infra/local/install-launch-agents.sh \
-  infra/local/run-tailscale.sh \
-  infra/local/stage14-runtime-common.sh \
-  infra/local/tailscale-login.sh \
   lessons.md \
   progress.md \
   task_plan.md
 git diff --cached --check
-git commit -m "fix: avoid empty tailscale state store"
-git -c http.version=HTTP/1.1 push origin HEAD:main
+git commit -m "docs: make stage 14 recovery steps resumable"
 candidate_sha=$(git rev-parse HEAD)
+print "candidate_sha=$candidate_sha"
+print "stage14_candidate_committed=true"
+)
+```
+
+再执行下面的推送块。该块可安全重复执行；如果网络失败，只重试此块，不要重跑提交块：
+
+```zsh
+(
+set -euo pipefail
+cd "/Users/a1-6/Documents/Paper Grading"
+test "$(git branch --show-current)" = "main"
+candidate_sha=$(git rev-parse HEAD)
+git -c http.version=HTTP/1.1 push origin HEAD:main
 remote_sha=$(git -c http.version=HTTP/1.1 ls-remote origin refs/heads/main | /usr/bin/cut -f1)
 test "$candidate_sha" = "$remote_sha"
 print "candidate_sha=$candidate_sha"
@@ -110,7 +118,7 @@ print "stage14_candidate_pushed=true"
 )
 ```
 
-不要把 `candidate_sha` 当作验收记录提交 SHA；它必须是包含上述 10 个文件的部署候选。
+最终 `candidate_sha` 必须是包含上述 5 个文件的最新提交；不得继续使用 `29a59b9` 进入节点 2。
 
 ### 1.3 核对新候选 CI
 
@@ -151,6 +159,20 @@ print "stage14_candidate_pushed=true"
 先关闭会制造 fake-IP 的 VPN 系统代理/虚拟网卡模式。密码、Passkey 和验证码只由用户在 Chrome 输入。
 
 执行位置：终端 B。
+
+先确认当前项目目录就是节点 1 取得 8/8 CI 的候选，且没有未提交改动。否则停止，不得使用旧脚本继续：
+
+```zsh
+(
+set -euo pipefail
+cd "/Users/a1-6/Documents/Paper Grading"
+read -r "candidate_sha?输入已取得 CI 8/8 的新候选完整 SHA："
+print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
+test "$(git rev-parse HEAD)" = "$candidate_sha"
+test -z "$(git status --porcelain)"
+print "stage14_tailscale_candidate_checkout_verified=true"
+)
+```
 
 如果曾出现 `cannot start backend when state store is unhealthy`，先执行下面的恢复块。它只接受由旧脚本误建的 0 字节普通文件，并移动到同目录备份；不会删除有效 Tailscale 身份。其他状态一律停止。
 

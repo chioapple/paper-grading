@@ -6,13 +6,14 @@
   预部署门禁，阶段 14 聚焦后端测试通过 32、失败 0，Sites 构建与路由通过 2、失败 0；
   候选 `71e377c251958fdd943a5f982bd9db4741a98db2` 与回滚
   `7302f1e5a16fd3b113149098a94238bbfe20acdb` 均由 GitHub Actions 官方只读 API 确认
-  8/8 通过；前者现仅为历史候选，后者仍是回滚 SHA。节点 1 的本地部分已完成，但整体须等
-  本轮 10 个文件提交并取得新候选 CI 8/8。真实生产 Tailscale、Sites、Supabase 写入、LaunchAgent、
+  8/8 通过；前者现仅为历史候选，后者仍是回滚 SHA。Tailscale 修复提交
+  `29a59b9ab88c1a78ffaaeb07862fa6e1bc729443` 也已精确确认 8/8；节点 1 仍须等本轮 5 个文档
+  文件提交并取得最新候选 CI 8/8。真实生产 Tailscale、Sites、Supabase 写入、LaunchAgent、
   模型调用、告警和回滚仍未执行；开始付费节点前必须先实现并测试
   `run-stage14-e2e.sh --resume`/`--postcondition`、生产端同名记录防重和 Sites bypass
   安全交接。下一步是补齐这个“付费前防重与恢复门禁”，然后在用户
   明确授权外部状态变化后从节点 2 顺序执行。简易验收文档现已为终端 A/B/C/D、Supabase、
-  Sites、UptimeRobot 和 Chrome 补齐逐步操作、30 个 zsh 代码块、SQL、通过标记和失败停止
+  Sites、UptimeRobot 和 Chrome 补齐逐步操作、32 个 zsh 代码块、SQL、通过标记和失败停止
   条件；zsh 语法和 10 个内嵌 Python 块均已检查。环境脚本已把 Heartbeat URL 改为隐藏输入，
   因此历史候选 `71e377c` 不再是最终候选；当前本地门禁通过、聚焦测试 32/0，等待本轮改动
   提交后取得新候选 CI 8/8。自动清理、备份、恢复演练和生产配额继续关闭。
