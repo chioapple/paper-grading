@@ -27,6 +27,7 @@ load_environment() {
 
 test -x "$CURRENT_ROOT/.venv/bin/python"
 load_environment "$COMMON_ENV"
+test "${PROVIDER_CALLS_ENABLED:-}" = "false"
 
 case "${1:-}" in
   api)

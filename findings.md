@@ -249,3 +249,26 @@
 - 生产迁移前不能只按预期 Worker 名前缀判断停机，Celery inspect 返回任何节点都应停止；Sites 和
   Mac 的回滚/恢复也必须验证实际运行版本，且把部署调用、状态轮询、访问范围、页面和 API 检查
   视为同一失败边界。origin 统一拒绝尾斜杠，避免健康检查拼成双斜杠 URL。
+
+## 2026-08-31 阶段 14 零费用与节点 2—6 系统复查
+
+- 本机 Tailscale 1.98.10 的真实命令确认 `serve get-config --all` 把配置写到 stdout；原命令把
+  snapshot 当位置参数并把 `--all` 放在其后，会稳定报 `must specify either --service ... or --all`。
+  Funnel 脚本现以 `0600` 临时文件接收、校验 JSON 后原子保存；既有 snapshot 不覆盖，恢复成功
+  后才删除。
+- 当前 Tailscale 身份文件是用户所有的非空普通文件；本轮临时 daemon 已停止，socket 与 pid
+  不存在。此前的空状态故障不再适用于当前状态，后续 2.1 先分类，不再要求用户输入构建摘要或
+  隔离有效身份文件。
+- 生产环境生成器此前会把用户值原样写入随后 `source` 的文件，包含 `$()`、美元符号、引号或
+  shell 元字符时可能误解析。现在所有值拒绝换行并使用 zsh 安全转义，validator 通过实际 source
+  后的 Settings 和 manifest 精确比对；注入与特殊字符往返测试通过。
+- 免费服务不能等同于总成本为零。可执行保证改为阶段 14 “新增费用为 0”：公开仓库标准 GitHub
+  runner、不保存构建 artifact；Supabase Free；Tailscale Personal；UptimeRobot Free 的 5 分钟
+  监控与邮件通知；模型调用硬关闭。Sites 官方公开资料未给出独立 $0 价格，必须以账户界面本次
+  发布不要求购买、升级或 credits 为进入门禁，否则停止。
+- 新增 `PROVIDER_CALLS_ENABLED=false` 多层硬门禁。API 不构造供应商连接测试器，Rubric 自动
+  结构化在数据库访问前拒绝，评分任务与周期分发在数据库或网络访问前拒绝；环境生成、组件
+  启动、watchdog、release 验证均要求精确 false。因此正式节点 5 从真实单篇流程改为既有账户
+  页面与数据库计数的零写入核对。
+- UptimeRobot 免费方案不提供维护窗口，检查间隔为 5 分钟；回滚时改为手工暂停两个 monitor，
+  告警等待上限按 5 分钟间隔、2 分钟 grace 和邮件投递余量设置为 12 分钟。

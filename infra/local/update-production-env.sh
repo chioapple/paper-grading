@@ -87,28 +87,51 @@ fi
 
 auth_invite_redirect_url="${frontend_origin%/}/auth/callback"
 
+quote_env_value() {
+  local value=$1
+  if [[ "$value" = *$'\n'* || "$value" = *$'\r'* ]]; then
+    print -u2 "环境值不得包含换行符"
+    return 1
+  fi
+  printf '%q' "$value"
+}
+
+database_url_q=$(quote_env_value "$database_url")
+export_database_url_q=$(quote_env_value "$export_database_url")
+grading_database_url_q=$(quote_env_value "$grading_database_url")
+supabase_url_q=$(quote_env_value "$supabase_url")
+supabase_publishable_key_q=$(quote_env_value "$supabase_publishable_key")
+supabase_secret_key_q=$(quote_env_value "$supabase_secret_key")
+supabase_storage_bucket_q=$(quote_env_value "$supabase_storage_bucket")
+provider_master_key_q=$(quote_env_value "$provider_master_key")
+auth_invite_redirect_url_q=$(quote_env_value "$auth_invite_redirect_url")
+frontend_origin_q=$(quote_env_value "$frontend_origin")
+vite_api_base_url_q=$(quote_env_value "$vite_api_base_url")
+uptimerobot_heartbeat_url_q=$(quote_env_value "$uptimerobot_heartbeat_url")
+
 umask 077
 cat >"$staging_dir/production.env" <<EOF
 APP_ENV=production
-DATABASE_URL=$database_url
-EXPORT_DATABASE_URL=$export_database_url
+DATABASE_URL=$database_url_q
+EXPORT_DATABASE_URL=$export_database_url_q
 REDIS_URL=redis://127.0.0.1:6379/0
-SUPABASE_URL=$supabase_url
-SUPABASE_PUBLISHABLE_KEY=$supabase_publishable_key
-SUPABASE_SECRET_KEY=$supabase_secret_key
-SUPABASE_STORAGE_BUCKET=$supabase_storage_bucket
+SUPABASE_URL=$supabase_url_q
+SUPABASE_PUBLISHABLE_KEY=$supabase_publishable_key_q
+SUPABASE_SECRET_KEY=$supabase_secret_key_q
+SUPABASE_STORAGE_BUCKET=$supabase_storage_bucket_q
 SUPABASE_STORAGE_SIGNED_URL_TTL_SECONDS=60
 SUPABASE_STORAGE_TIMEOUT_SECONDS=60.0
-PROVIDER_MASTER_KEY=$provider_master_key
-AUTH_INVITE_REDIRECT_URL=$auth_invite_redirect_url
-FRONTEND_ORIGIN=$frontend_origin
-VITE_API_BASE_URL=$vite_api_base_url
-VITE_SUPABASE_URL=$supabase_url
-VITE_SUPABASE_PUBLISHABLE_KEY=$supabase_publishable_key
-UPTIMEROBOT_HEARTBEAT_URL=$uptimerobot_heartbeat_url
+PROVIDER_MASTER_KEY=$provider_master_key_q
+PROVIDER_CALLS_ENABLED=false
+AUTH_INVITE_REDIRECT_URL=$auth_invite_redirect_url_q
+FRONTEND_ORIGIN=$frontend_origin_q
+VITE_API_BASE_URL=$vite_api_base_url_q
+VITE_SUPABASE_URL=$supabase_url_q
+VITE_SUPABASE_PUBLISHABLE_KEY=$supabase_publishable_key_q
+UPTIMEROBOT_HEARTBEAT_URL=$uptimerobot_heartbeat_url_q
 EOF
 cat >"$staging_dir/grading-worker.env" <<EOF
-DATABASE_URL=$grading_database_url
+DATABASE_URL=$grading_database_url_q
 EOF
 chmod 600 "$staging_dir/production.env" "$staging_dir/grading-worker.env"
 

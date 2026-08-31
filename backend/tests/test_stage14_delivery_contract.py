@@ -33,6 +33,8 @@ def test_ci_is_a_strict_non_deploying_gate_chain() -> None:
     assert "deployCommand" not in workflow
     assert "npm run audit:dependencies" in workflow
     assert "detect-secrets-hook" in workflow
+    assert "actions/upload-artifact" not in workflow
+    assert "actions/download-artifact" not in workflow
     assert "postgres:16" in workflow
     assert "alembic downgrade base" not in workflow
     assert "alembic downgrade 20260722_0017" in workflow
@@ -79,6 +81,7 @@ def test_sites_and_local_deployment_keep_public_and_secret_boundaries_separate()
     assert 'new URL("/index.html", request.url)' in sites_worker
     assert "--host 127.0.0.1" in component_runner
     assert "app.workers.supervisor" in component_runner
+    assert 'test "${PROVIDER_CALLS_ENABLED:-}" = "false"' in component_runner
     assert "--queues=paper_grading.exports" in component_runner
     api_section = component_runner.split("  api)", 1)[1].split("  ;;", 1)[0]
     grading_section = component_runner.split("  grading)", 1)[1].split("  ;;", 1)[0]
@@ -98,6 +101,7 @@ def test_sites_and_local_deployment_keep_public_and_secret_boundaries_separate()
     for component in ("tailscale", "watchdog"):
         assert f"write_single_program_plist {component}" in launch_installer
     assert "redis://127.0.0.1:6379/0" in production_template
+    assert "PROVIDER_CALLS_ENABLED=false" in production_template
     assert not (PROJECT_ROOT / "infra/render.yaml").exists()
 
 
@@ -176,13 +180,35 @@ def test_stage_fourteen_context_has_no_superseded_stage_five_blocker() -> None:
 def test_stage_fourteen_ci_acceptance_records_two_exact_green_shas() -> None:
     acceptance = (PROJECT_ROOT / "docs/STAGE14_ACCEPTANCE.md").read_text(encoding="utf-8")
 
-    assert "71e377c251958fdd943a5f982bd9db4741a98db2" in acceptance  # pragma: allowlist secret
+    assert "39b14ac156e3c0b77085757b6851bf73f79d063c" in acceptance  # pragma: allowlist secret
     assert "7302f1e5a16fd3b113149098a94238bbfe20acdb" in acceptance  # pragma: allowlist secret
     assert "候选 SHA CI" in acceptance
     assert "回滚 SHA CI" in acceptance
     assert acceptance.count("8/8 通过") >= 2
     assert "gh repo view" not in acceptance
     assert "gh run" not in acceptance
+
+
+def test_stage_fourteen_acceptance_is_zero_cost_and_uses_recorded_git_sha() -> None:
+    acceptance = (PROJECT_ROOT / "docs/STAGE14_ACCEPTANCE.md").read_text(encoding="utf-8")
+
+    assert "阶段 14 新增费用为 0" in acceptance
+    assert "PROVIDER_CALLS_ENABLED=false" in acceptance
+    assert "zero_cost_readonly_business_check=true" in acceptance
+    assert "三个命令全部禁止执行" in acceptance
+    assert "stage14_provider_key_and_network_policy_verified" not in acceptance
+    assert "期望间隔设为 5 分钟" in acceptance
+    assert "先在 UptimeRobot 建立维护窗口" not in acceptance
+    assert "single_paid_flow" not in acceptance
+    assert 'read -r "candidate_sha?' not in acceptance
+    assert "shared/acceptance/candidate-sha" in acceptance
+
+    rubric_dependencies = (PROJECT_ROOT / "backend/app/rubrics/dependencies.py").read_text(
+        encoding="utf-8"
+    )
+    rubric_service = (PROJECT_ROOT / "backend/app/rubrics/service.py").read_text(encoding="utf-8")
+    assert "if settings.provider_calls_enabled:" in rubric_dependencies
+    assert "if not self._provider_calls_enabled:" in rubric_service
 
 
 def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
@@ -211,10 +237,12 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "--rollback-first-install" in installer
     assert "stage14_first_install_rollback=true" in installer
     assert "stage14_local_runtime_verified=true" in runtime
+    assert 'test "${PROVIDER_CALLS_ENABLED:-}" = "false"' in runtime
     assert "stage14_state_dir" in runtime
     assert "funnel status --json" in runtime
     assert 'prefixes != ["exports", "grading", "maintenance"]' in runtime
     assert "curl --config" in watchdog
+    assert 'test "${PROVIDER_CALLS_ENABLED:-}" = "false"' in watchdog
     assert "heartbeat.uptimerobot.com" in watchdog
     assert "shared/env/production.env" in component_runner
     assert "CELERYBEAT_SCHEDULE_FILENAME" in component_runner
@@ -228,6 +256,7 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "production.env" in env_updater
     assert "grading-worker.env" in env_updater
     assert 'read -rs "uptimerobot_heartbeat_url?' in env_updater
+    assert "PROVIDER_CALLS_ENABLED=false" in env_updater
     assert '"$frontend_origin" != https://*' in env_updater
     assert '"$vite_api_base_url" != https://*' in env_updater
     assert '"$frontend_origin" = */' in env_updater

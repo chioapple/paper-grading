@@ -134,6 +134,297 @@ def test_tailscale_state_preparation_never_creates_an_empty_store(tmp_path: Path
 
 
 @MACOS_ONLY
+def test_funnel_enable_saves_all_service_config_before_enabling(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    fake_client = tmp_path / "tailscale"
+    call_log = tmp_path / "tailscale.calls"
+    fake_client.write_text(
+        """#!/bin/zsh
+set -euo pipefail
+print -r -- "$*" >>"$STAGE14_FAKE_TAILSCALE_LOG"
+if [[ "$#" = 4 && "$2" = serve && "$3" = get-config && "$4" = --all ]]; then
+  print '{"version":"0.0.1"}'
+  exit 0
+fi
+if [[ "$#" = 5 && "$2" = funnel && "$3" = --bg && "$4" = --yes && \
+      "$5" = http://127.0.0.1:8000 ]]; then
+  exit 0
+fi
+exit 64
+""",
+        encoding="utf-8",
+    )
+    fake_client.chmod(0o700)
+    env = isolated_env() | {
+        "STAGE14_RUNTIME_ROOT": str(runtime),
+        "STAGE14_TAILSCALE_CLIENT_BIN": str(fake_client),
+        "STAGE14_FAKE_TAILSCALE_LOG": str(call_log),
+    }
+
+    completed = subprocess.run(
+        [str(script_path("stage14-funnel.sh")), "enable"],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    snapshot = runtime / "shared" / "tailscale" / "serve-config.json"
+    assert snapshot.read_text(encoding="utf-8") == '{"version":"0.0.1"}\n'
+    assert stat.S_IMODE(snapshot.stat().st_mode) == 0o600
+    assert call_log.read_text(encoding="utf-8").splitlines() == [
+        f"--socket={runtime}/shared/tailscale/tailscaled.sock serve get-config --all",
+        f"--socket={runtime}/shared/tailscale/tailscaled.sock funnel --bg --yes "
+        "http://127.0.0.1:8000",
+    ]
+
+
+@MACOS_ONLY
+def test_funnel_enable_never_overwrites_an_existing_restore_snapshot(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    tailscale_dir = runtime / "shared" / "tailscale"
+    tailscale_dir.mkdir(parents=True)
+    snapshot = tailscale_dir / "serve-config.json"
+    original_snapshot = '{"version":"0.0.1","services":{"original":{}}}\n'
+    snapshot.write_text(original_snapshot, encoding="utf-8")
+    snapshot.chmod(0o600)
+    fake_client = tmp_path / "tailscale"
+    call_log = tmp_path / "tailscale.calls"
+    fake_client.write_text(
+        """#!/bin/zsh
+set -euo pipefail
+print -r -- "$*" >>"$STAGE14_FAKE_TAILSCALE_LOG"
+if [[ "$#" = 5 && "$2" = funnel && "$3" = --bg && "$4" = --yes && \
+      "$5" = http://127.0.0.1:8000 ]]; then
+  exit 0
+fi
+exit 64
+""",
+        encoding="utf-8",
+    )
+    fake_client.chmod(0o700)
+    env = isolated_env() | {
+        "STAGE14_RUNTIME_ROOT": str(runtime),
+        "STAGE14_TAILSCALE_CLIENT_BIN": str(fake_client),
+        "STAGE14_FAKE_TAILSCALE_LOG": str(call_log),
+    }
+
+    completed = subprocess.run(
+        [str(script_path("stage14-funnel.sh")), "enable"],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert snapshot.read_text(encoding="utf-8") == original_snapshot
+    assert (
+        call_log.read_text(encoding="utf-8")
+        .strip()
+        .endswith("funnel --bg --yes http://127.0.0.1:8000")
+    )
+    assert "get-config" not in call_log.read_text(encoding="utf-8")
+
+
+@MACOS_ONLY
+def test_funnel_enable_does_not_leave_a_partial_restore_snapshot(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    fake_client = tmp_path / "tailscale"
+    fake_client.write_text(
+        """#!/bin/zsh
+set -euo pipefail
+if [[ "$#" = 4 && "$2" = serve && "$3" = get-config && "$4" = --all ]]; then
+  print -n '{"version":'
+  exit 70
+fi
+exit 64
+""",
+        encoding="utf-8",
+    )
+    fake_client.chmod(0o700)
+    env = isolated_env() | {
+        "STAGE14_RUNTIME_ROOT": str(runtime),
+        "STAGE14_TAILSCALE_CLIENT_BIN": str(fake_client),
+    }
+
+    completed = subprocess.run(
+        [str(script_path("stage14-funnel.sh")), "enable"],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    snapshot = runtime / "shared" / "tailscale" / "serve-config.json"
+    assert not snapshot.exists()
+
+
+@MACOS_ONLY
+def test_funnel_enable_rejects_an_invalid_restore_snapshot(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    fake_client = tmp_path / "tailscale"
+    call_log = tmp_path / "tailscale.calls"
+    fake_client.write_text(
+        """#!/bin/zsh
+set -euo pipefail
+print -r -- "$*" >>"$STAGE14_FAKE_TAILSCALE_LOG"
+if [[ "$#" = 4 && "$2" = serve && "$3" = get-config && "$4" = --all ]]; then
+  print 'not-json'
+  exit 0
+fi
+exit 64
+""",
+        encoding="utf-8",
+    )
+    fake_client.chmod(0o700)
+    env = isolated_env() | {
+        "STAGE14_RUNTIME_ROOT": str(runtime),
+        "STAGE14_TAILSCALE_CLIENT_BIN": str(fake_client),
+        "STAGE14_FAKE_TAILSCALE_LOG": str(call_log),
+    }
+
+    completed = subprocess.run(
+        [str(script_path("stage14-funnel.sh")), "enable"],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    snapshot = runtime / "shared" / "tailscale" / "serve-config.json"
+    assert not snapshot.exists()
+    assert " funnel " not in call_log.read_text(encoding="utf-8")
+
+
+@MACOS_ONLY
+def test_funnel_restore_applies_the_saved_config_to_all_services(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    tailscale_dir = runtime / "shared" / "tailscale"
+    tailscale_dir.mkdir(parents=True)
+    snapshot = tailscale_dir / "serve-config.json"
+    snapshot.write_text('{"version":"0.0.1"}\n', encoding="utf-8")
+    snapshot.chmod(0o600)
+    fake_client = tmp_path / "tailscale"
+    call_log = tmp_path / "tailscale.calls"
+    fake_client.write_text(
+        """#!/bin/zsh
+set -euo pipefail
+print -r -- "$*" >>"$STAGE14_FAKE_TAILSCALE_LOG"
+if [[ "$#" = 5 && "$2" = serve && "$3" = set-config && \
+      "$4" = --all && "$5" = "$STAGE14_EXPECTED_CONFIG" ]]; then
+  exit 0
+fi
+exit 64
+""",
+        encoding="utf-8",
+    )
+    fake_client.chmod(0o700)
+    env = isolated_env() | {
+        "STAGE14_RUNTIME_ROOT": str(runtime),
+        "STAGE14_TAILSCALE_CLIENT_BIN": str(fake_client),
+        "STAGE14_FAKE_TAILSCALE_LOG": str(call_log),
+        "STAGE14_EXPECTED_CONFIG": str(snapshot),
+    }
+
+    completed = subprocess.run(
+        [str(script_path("stage14-funnel.sh")), "restore"],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert call_log.read_text(encoding="utf-8").strip() == (
+        f"--socket={runtime}/shared/tailscale/tailscaled.sock serve set-config --all {snapshot}"
+    )
+    assert not snapshot.exists()
+
+
+@MACOS_ONLY
+def test_environment_writer_shell_quotes_every_user_supplied_value(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    release_sha = "1" * 40
+    release = runtime / "releases" / release_sha
+    validator = release / "infra" / "local" / "validate-release.sh"
+    validator.parent.mkdir(parents=True)
+    validator.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
+    validator.chmod(0o700)
+    runtime.mkdir(exist_ok=True)
+    (runtime / "current").symlink_to(release)
+
+    injection_marker = tmp_path / "environment-value-was-executed"
+    database_url = (
+        "postgresql+asyncpg://user:pa$(touch "
+        f"{injection_marker})$HOME&word'quote@host/db?ssl=require"
+    )
+    inputs = [
+        database_url,
+        "postgresql+asyncpg://export:p&ss@host/db?ssl=require",
+        "postgresql+asyncpg://grading:p$ss@host/db?ssl=require",
+        "https://test-project.supabase.co",
+        "publishable$key&value",
+        "secret$key&value",
+        "paper-grading-test",
+        "master$key&value=",
+        "https://frontend.example",
+        "https://api.example",
+        "https://heartbeat.uptimerobot.com/test?value=$HOME&ok=1",
+    ]
+    env = isolated_env() | {"STAGE14_RUNTIME_ROOT": str(runtime)}
+
+    completed = subprocess.run(
+        [str(script_path("update-production-env.sh")), "--create"],
+        cwd=PROJECT_ROOT,
+        env=env,
+        input="\n".join(inputs) + "\n",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert not injection_marker.exists()
+    production_env = runtime / "shared" / "env" / "production.env"
+    grading_env = runtime / "shared" / "env" / "grading-worker.env"
+    source_check = subprocess.run(
+        [
+            "/bin/zsh",
+            "-c",
+            'set -euo pipefail; source "$PRODUCTION_ENV"; '
+            'test "$DATABASE_URL" = "$EXPECTED_DATABASE_URL"; '
+            'test "$SUPABASE_PUBLISHABLE_KEY" = "$EXPECTED_PUBLISHABLE_KEY"; '
+            'test "$UPTIMEROBOT_HEARTBEAT_URL" = "$EXPECTED_HEARTBEAT_URL"; '
+            'test "$PROVIDER_CALLS_ENABLED" = false; '
+            'source "$GRADING_ENV"; '
+            'test "$DATABASE_URL" = "$EXPECTED_GRADING_DATABASE_URL"',
+        ],
+        env=isolated_env()
+        | {
+            "PRODUCTION_ENV": str(production_env),
+            "GRADING_ENV": str(grading_env),
+            "EXPECTED_DATABASE_URL": database_url,
+            "EXPECTED_PUBLISHABLE_KEY": inputs[4],
+            "EXPECTED_HEARTBEAT_URL": inputs[10],
+            "EXPECTED_GRADING_DATABASE_URL": inputs[2],
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert source_check.returncode == 0, source_check.stderr
+
+
+@MACOS_ONLY
 def test_switch_release_replaces_current_symlink_instead_of_writing_through_it(
     tmp_path: Path,
 ) -> None:

@@ -34,12 +34,15 @@ def get_provider_service(
     url_policy = ProviderBaseUrlPolicy(
         allow_official_fake_ip=settings.allow_official_provider_fake_ip,
     )
+    connection_tester = None
+    if settings.provider_calls_enabled:
+        connection_tester = ProviderConnectionTester(
+            url_policy=url_policy,
+            http_client=HttpCoreProviderClient(),
+        )
     return ProviderConfigService(
         repository=repository,
         cipher=ApiKeyCipher.from_base64_master_key(settings.provider_master_key.get_secret_value()),
-        connection_tester=ProviderConnectionTester(
-            url_policy=url_policy,
-            http_client=HttpCoreProviderClient(),
-        ),
+        connection_tester=connection_tester,
         url_policy=url_policy,
     )

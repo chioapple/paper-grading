@@ -15,13 +15,17 @@ def get_assignment_rubric_service(request: Request) -> AssignmentRubricService:
 
     database: Database = request.app.state.database
     settings = request.app.state.settings
-    return AssignmentRubricService(
-        repository=SqlAlchemyAssignmentRubricRepository(database),
-        cipher=ApiKeyCipher.from_base64_master_key(settings.provider_master_key.get_secret_value()),
-        generator=OpenAICompatibleRubricGenerator(
+    generator = None
+    if settings.provider_calls_enabled:
+        generator = OpenAICompatibleRubricGenerator(
             url_policy=ProviderBaseUrlPolicy(
                 allow_official_fake_ip=settings.allow_official_provider_fake_ip,
             ),
             http_client=HttpCoreRubricClient(),
-        ),
+        )
+    return AssignmentRubricService(
+        repository=SqlAlchemyAssignmentRubricRepository(database),
+        cipher=ApiKeyCipher.from_base64_master_key(settings.provider_master_key.get_secret_value()),
+        generator=generator,
+        provider_calls_enabled=settings.provider_calls_enabled,
     )

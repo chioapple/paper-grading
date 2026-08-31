@@ -12,6 +12,7 @@ if [[ "${1:-}" = "--self-check" ]]; then
 fi
 
 stage14_load_env_file "$(stage14_env_dir)/production.env"
+test "${PROVIDER_CALLS_ENABLED:-}" = "false"
 current_root=$(stage14_resolve_symlink_target "$(stage14_current_root)")
 
 test -n "${UPTIMEROBOT_HEARTBEAT_URL:?missing UPTIMEROBOT_HEARTBEAT_URL}"

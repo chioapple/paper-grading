@@ -614,6 +614,30 @@ async def test_structure_uses_the_selected_enabled_providers_current_default_mod
 
 
 @pytest.mark.anyio
+async def test_zero_cost_runtime_rejects_rubric_generation_before_repository_access() -> None:
+    class RepositoryThatMustNotBeUsed(InMemoryAssignmentRepository):
+        async def get_assignment(
+            self,
+            owner_id: UUID,
+            assignment_id: UUID,
+        ) -> AssignmentDetail | None:
+            raise AssertionError("零费用硬门禁必须先于数据库访问")
+
+    service = AssignmentRubricService(
+        repository=RepositoryThatMustNotBeUsed(),
+        provider_calls_enabled=False,
+    )
+
+    with pytest.raises(RubricProviderUnavailableError, match="模型调用已关闭"):
+        await service.structure_rubric(
+            OWNER_ID,
+            uuid4(),
+            uuid4(),
+            RubricStructureRequest(provider_config_id=uuid4()),
+        )
+
+
+@pytest.mark.anyio
 async def test_structure_rejects_a_provider_whose_current_version_is_not_tested() -> None:
     repository, service, provider_id = build_generation_service()
     provider = repository.providers[provider_id]

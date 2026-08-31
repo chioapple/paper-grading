@@ -53,6 +53,7 @@ if [[ -n "$env_dir" ]]; then
   grading_env="$env_dir/grading-worker.env"
   stage14_require_regular_file "$production_env"
   stage14_require_regular_file "$grading_env"
+  stage14_load_env_file "$production_env"
 fi
 
 STAGE14_RELEASE="$release" \
@@ -78,32 +79,29 @@ env_dir = os.environ["STAGE14_ENV_DIR"]
 if not env_dir:
     raise SystemExit(0)
 
-production_lines = {}
-for raw_line in (Path(env_dir) / "production.env").read_text(encoding="utf-8").splitlines():
-    if raw_line and not raw_line.startswith("#"):
-        key, value = raw_line.split("=", 1)
-        production_lines[key] = value
-grading_lines = {}
-for raw_line in (Path(env_dir) / "grading-worker.env").read_text(encoding="utf-8").splitlines():
-    if raw_line and not raw_line.startswith("#"):
-        key, value = raw_line.split("=", 1)
-        grading_lines[key] = value
-
-assert production_lines["VITE_API_BASE_URL"] == manifest["vite_api_base_url"]
-assert production_lines["VITE_SUPABASE_URL"] == manifest["vite_supabase_url"]
+assert os.environ["VITE_API_BASE_URL"] == manifest["vite_api_base_url"]
+assert os.environ["VITE_SUPABASE_URL"] == manifest["vite_supabase_url"]
 assert (
     hashlib.sha256(
-        production_lines["VITE_SUPABASE_PUBLISHABLE_KEY"].encode("utf-8")
+        os.environ["VITE_SUPABASE_PUBLISHABLE_KEY"].encode("utf-8")
     ).hexdigest()
     == manifest["vite_supabase_publishable_key_sha256"]
 )
 
-common_env = dict(production_lines)
-Settings.model_validate(common_env)
-ExportWorkerSettings.model_validate(common_env)
-worker_env = dict(common_env)
-worker_env.update(grading_lines)
-WorkerSettings.model_validate(worker_env)
+assert os.environ["PROVIDER_CALLS_ENABLED"] == "false"
+settings = Settings.load()
+assert getattr(settings, "provider_calls_enabled", False) is False
+ExportWorkerSettings.load()
 PY
+
+if [[ -n "$env_dir" ]]; then
+  stage14_load_env_file "$grading_env"
+  PYTHONPATH="$release/backend" "$python_bin" - <<'PY'
+from app.config import WorkerSettings
+
+worker_settings = WorkerSettings.load()
+assert getattr(worker_settings, "provider_calls_enabled", False) is False
+PY
+fi
 
 print "stage14_release_validated=true"

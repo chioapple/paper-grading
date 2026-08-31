@@ -1,6 +1,7 @@
 """阶段六作业与 Rubric HTTP 契约测试。"""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
 
@@ -26,6 +27,22 @@ def build_test_settings() -> Settings:
         DATABASE_URL="postgresql+asyncpg://localhost:5432/paper_grading_test",
         **TEST_AUTH_SETTINGS,
     )
+
+
+def test_zero_cost_runtime_does_not_construct_a_rubric_model_client() -> None:
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                database=object(),
+                settings=build_test_settings(),
+            )
+        )
+    )
+
+    service = get_assignment_rubric_service(request)  # type: ignore[arg-type]
+
+    assert service._generator is None
+    assert service._provider_calls_enabled is False
 
 
 class CreateAssignmentRepository:

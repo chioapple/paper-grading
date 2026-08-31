@@ -23,6 +23,7 @@ labels=(
 stage14_require_regular_file "$(stage14_env_dir)/production.env"
 stage14_install_secure_dir "$(stage14_state_dir)" 700
 stage14_load_env_file "$(stage14_env_dir)/production.env"
+test "${PROVIDER_CALLS_ENABLED:-}" = "false"
 current_root=$(stage14_resolve_symlink_target "$(stage14_current_root)")
 
 for label in "${labels[@]}"; do

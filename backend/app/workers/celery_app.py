@@ -78,6 +78,8 @@ celery_app.conf.update(
 
 
 async def _run_grading_item(item_id: UUID, dispatch_version: int) -> str:
+    if not settings.provider_calls_enabled:
+        raise RuntimeError("provider_calls_disabled")
     database = Database.from_settings(settings)
     try:
         async with httpx.AsyncClient(
@@ -110,6 +112,8 @@ async def _run_grading_item(item_id: UUID, dispatch_version: int) -> str:
 
 
 async def _dispatch() -> int:
+    if not settings.provider_calls_enabled:
+        return 0
     database = Database.from_settings(settings)
     try:
         repository = SqlAlchemyGradingJobRepository(database)

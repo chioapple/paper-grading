@@ -454,3 +454,20 @@
 - Tailscale 修复提交 `29a59b9ab88c1a78ffaaeb07862fa6e1bc729443` 已由 GitHub Actions 官方 API
   精确核对为单个 completed/success run，8 个 jobs 全部 success。由于验收指南又有文档修正，节点 2
   仍须等待这 5 个文档文件形成最新提交并取得该新 SHA 的 8/8。
+
+## 2026-08-31
+
+- 从节点 2.1 起逐块复查正式验收流程，复现并修正 Tailscale 1.98 Funnel 配置快照的参数顺序；
+  真实客户端 self-check 通过，临时 daemon 已停止，没有启用 Funnel 或改变生产 serve 配置。
+- 修复生产环境文件的 shell 特殊字符解析与潜在命令注入：值统一安全转义，release validator
+  通过实际 Settings 加载核验。特殊字符和命令替换负向回归通过。
+- 阶段 14 改为零新增费用验收。新增 `PROVIDER_CALLS_ENABLED=false` 的供应商连接测试、Rubric
+  自动结构化、评分 Worker、环境、启动、watchdog 和 release 多层硬门禁；删除真实模型业务流，
+  改为数据库前后计数与既有页面的只读检查。
+- GitHub CI 移除 build artifact 上传/下载；Supabase、Tailscale、UptimeRobot 必须确认免费方案，
+  UptimeRobot 使用 5 分钟检查和免费邮件，不使用付费维护窗口。Sites 无独立公开 $0 价格，账户页面
+  无法确认本次新增费用为 0 时必须停止。
+- 最终本地门禁完成：目标回归 87、完整后端 513、前端 70、Sites 路由 2、桌面/手机浏览器 2、
+  源码与构建密钥扫描 2 项通过，失败 0；严格 mypy 171 个源文件、Ruff、格式、lint、类型检查、
+  依赖审计、Sites 构建、CI YAML、Shell 语法和差异检查均通过。正式文档 31 个 zsh 块、12 个
+  Python heredoc 语法通过。未执行生产写入、模型调用、Sites 发布、Funnel 启用、告警或回滚。

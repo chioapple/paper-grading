@@ -127,6 +127,13 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 API、评分/维护 Worker、独立 Excel 导出 Worker、Tailscale、防休眠和 watchdog。
 本机 Redis 只作为 broker，业务状态仍以 PostgreSQL 为准。
 
+阶段 14 的生产验收固定为零新增费用模式。生产环境必须精确包含
+`PROVIDER_CALLS_ENABLED=false`；API 不构造供应商连接测试器，评分任务和周期分发在访问
+数据库或供应商前直接拒绝。阶段 14 禁止模型连接测试、Rubric 生成、评分和真实 E2E，只做
+页面、健康状态、权限边界和数据库计数的只读检查。GitHub CI 只用公开仓库标准 runner，不上传
+构建 artifact；Supabase、Tailscale、UptimeRobot 必须保持免费方案。Sites 只有在账户页面明确
+显示本次私有发布不产生新增费用时才可继续，否则验收停止。
+
 阶段 14 生产验收开始前，先在仓库根目录执行 `./infra/local/stage14-predeployment-gate.sh`；
 它只做代码门禁检查，成功固定输出 `stage14_predeployment_gate=true`。
 
@@ -144,7 +151,8 @@ MIGRATION_DATABASE_URL='postgresql+asyncpg://...?ssl=require' .venv/bin/alembic 
 
 阶段 3 的真实 Auth 验收步骤见 `docs/STAGE3_ACCEPTANCE.md`，阶段 4 的隔离验收见 `docs/STAGE4_ACCEPTANCE.md`，阶段 5 的模型配置迁移见 `docs/STAGE5_ACCEPTANCE.md`，阶段 6 的真实 Rubric 流程见 `docs/STAGE6_ACCEPTANCE.md`，阶段 7 的 Supabase Storage、迁移和上传验收见 `docs/STAGE7_ACCEPTANCE.md`，阶段 8 的评分快照迁移见 `docs/STAGE8_ACCEPTANCE.md`，阶段 10 的批量流水线验收见 `docs/STAGE10_ACCEPTANCE.md`，阶段 11 的教师复核验收见 `docs/STAGE11_ACCEPTANCE.md`，阶段 12 的迁移、权限、Storage、Excel 和浏览器步骤见 `docs/STAGE12_ACCEPTANCE.md`。阶段 13 验收见 `docs/STAGE13_ACCEPTANCE.md`，阶段 14 总验收见 `docs/STAGE14_ACCEPTANCE.md`；部署、回滚、冒烟、监控与恢复步骤统一位于 `docs/runbooks/`。外部写入、付费和破坏性操作仍只由用户明确授权后执行。
 
-最终部署顺序固定为：数据库迁移 → API → Redis → 评分/维护 Worker → Excel 导出 Worker → 前端 → 冒烟测试。
+阶段 14 零费用部署顺序固定为：数据库迁移 → API → Redis → 评分/维护 Worker（供应商调用硬关闭）
+→ Excel 导出 Worker → 前端 → 无写入冒烟与只读业务检查。
 
 ## 测试
 

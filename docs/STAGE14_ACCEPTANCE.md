@@ -13,28 +13,46 @@
 
 | 项目 | 结果 | 是否还要重跑 |
 |---|---|---|
-| 本地预部署门禁 | 2026-08-30：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
-| 阶段 14 聚焦后端测试 | 32 通过、0 失败 | 相关代码变化后重跑 |
+| 本地预部署门禁 | 2026-08-31：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
+| 阶段 14 聚焦后端测试 | 87 通过、0 失败 | 相关代码变化后重跑 |
 | Sites 构建与路由测试 | 2 通过、0 失败 | 前端或 Sites 配置变化后重跑 |
 | 历史候选 SHA CI | `71e377c251958fdd943a5f982bd9db4741a98db2`：8/8 通过，但不含最新部署脚本修复 | 不得作为最终候选 |
 | 失败候选 SHA CI | `27c67ac`：前 7 项通过，第 8 项 Git SHA 高熵误判；已在本地修复 | 不得使用或 rerun |
 | 上一绿色候选 SHA CI | `d99dd5f`：8/8 通过，但仍会预建空 Tailscale 状态 | 不得作为最终候选 |
-| Tailscale 修复候选 CI | `29a59b9ab88c1a78ffaaeb07862fa6e1bc729443`：精确 SHA、8/8 通过 | 当前代码基线；本次文档修正提交后仍须取得新 SHA 的 8/8 |
+| 上一完整绿色 SHA CI | `39b14ac156e3c0b77085757b6851bf73f79d063c`：精确 SHA、8/8 通过，但不含本轮 Funnel 和零费用硬门禁 | 不得作为最终候选 |
 | 回滚 SHA CI | `7302f1e5a16fd3b113149098a94238bbfe20acdb`：8/8 通过 | 不需要 |
 | PostgreSQL、Auth、Storage、Redis、Worker、供应商、100 篇结构证据 | 已完成 | 禁止在生产重复做破坏性测试或 100 次模型调用 |
-| 生产部署、真实单篇业务流、告警、回滚 | 未执行 | 按下列节点执行 |
+| 生产部署、零费用只读验收、告警、回滚 | 未执行 | 按下列节点执行 |
 
 阶段 14 仍是“进行中”。本地与 CI 通过不代表生产验收完成。
 
 ## 不可违反的边界
 
-1. 任何一步失败都停止，不直接重跑付费流程。
+1. 任何一步失败都停止；阶段 14 禁止任何模型调用、付费试用、购买、升级或按量计费操作。
 2. 生产数据库只允许前向升级到 `20260728_0019`，禁止 downgrade。
 3. Sites 全程保持 owner-only；API 和 Redis 只监听本机回环地址。
 4. Mac 后端和 Sites 必须来自同一个候选 SHA；回滚时两端也必须使用同一个回滚 SHA。
 5. 自动清理、备份、恢复演练和生产配额继续关闭；启用时另行授权。
 6. 密码、Token、Key、数据库 URL、论文内容、业务 ID 和签名 URL 不得写入 Git、文档、日志或聊天。
-7. 真实业务只创建一个单篇批次；手机和第二位教师复用同一批次，不重复产生模型费用。
+7. `PROVIDER_CALLS_ENABLED` 必须始终精确为 `false`；不得执行供应商连接测试、Rubric 生成、评分或真实 E2E。
+
+## 零费用口径与进入门禁
+
+本文件能保证的是“阶段 14 新增费用为 0”：不新增订阅、不购买额度、不触发模型 API 计费，也不使用付费功能。现有 Mac、用电、网络和已经购买的 ChatGPT 套餐不属于新增费用。若“完全免费”还要求这些既有成本也必须为 0，则当前 Sites 架构不满足，必须在节点 2 前停止，不能宣称阶段 14 通过。
+
+进入节点 2 前，用户必须在各服务网页逐项确认；任一项无法确认就停止：
+
+| 部分 | 必须看到 | 免费边界 |
+|---|---|---|
+| GitHub Actions | 仓库仍为 Public；8 个 jobs 都使用标准 `ubuntu-latest` | 标准 GitHub-hosted runner 对 Public 仓库免费；禁止 larger runner、Codespaces 和付费安全产品 |
+| Supabase | 目标组织为 **Free / $0**，无付费 add-on，数据库、Storage、流量均在免费额度内 | Free 为 $0/月；超额会受限而不是收费；不得升级 Pro |
+| Tailscale | 当前 tailnet 为 **Personal / $0 Free forever**，个人非商业用途，无付费试用 | 使用个人公共域账号；Funnel 对所有方案可用 |
+| UptimeRobot | 当前账户为 **Free / 0**，不要求信用卡 | 只建 2 个监控；固定 5 分钟；只用免费邮件通知；禁止 SMS、语音、自动充值和维护窗口 |
+| Codex Sites | 现有项目的保存与私有部署界面不出现购买、升级、credits 或额外价格 | 官方公开资料没有给出 Sites 独立免费价格；只有账户界面明确显示本次部署新增费用为 0 才可继续 |
+| 模型供应商 | 不调用 | 不运行连接测试、Rubric 生成、评分和 `run-stage14-e2e.sh` |
+| 本机组件 | 只使用现有 Mac、Homebrew、Redis、Python、Node.js、Tailscale CLI | 不购买软件或云主机；既有设备、网络和用电不计入“新增费用” |
+
+当前依据：[GitHub Actions 计费](https://docs.github.com/en/billing/concepts/product-billing/github-actions)、[Supabase Free 与额度](https://supabase.com/pricing)、[Supabase Free 不收费规则](https://supabase.com/docs/guides/platform/cost-control)、[Tailscale Personal 定价](https://tailscale.com/pricing)、[Funnel 方案范围](https://tailscale.com/docs/features/tailscale-funnel)、[UptimeRobot Free 定价](https://uptimerobot.com/pricing/)、[UptimeRobot Free 监控类型](https://help.uptimerobot.com/en/articles/11604710-who-should-use-uptimerobot-s-free-plan)、[UptimeRobot 维护窗口仅限付费](https://help.uptimerobot.com/en/articles/11360884-what-is-a-maintenance-window-and-how-to-use-it-in-uptimerobot)。定价可能变化，每次验收都必须重新看账户页面，不能只依赖本文。
 
 ## 验收节点
 
@@ -43,9 +61,9 @@
 | 1. 代码与版本门禁 | Codex；项目根目录、GitHub Actions | 跑本地门禁，确认候选和回滚 SHA 的 CI | 本地门禁为 `true`；两个 SHA 各 8/8 通过；部署只读取封存 SHA，不读取当前工作树 | 不进入生产 |
 | 2. 私有发布准备 | 用户授权后；Mac、Tailscale、Sites | 准备两个封存 release，启用 Funnel，保存候选/回滚两个 Sites 版本 | Funnel HTTPS 可用；Sites owner-only；两端版本都能追溯到对应 SHA | 恢复原 Funnel/Sites 状态，不迁移数据库 |
 | 3. 目标环境与前向迁移 | 用户授权后；Supabase、Mac | 核对目标项目、空闲队列、专用角色和环境文件；只前向迁移；安装并启动运行环境 | revision=`20260728_0019`；环境文件 `0600`；API/Redis 仅回环；6 个 LaunchAgent 正常；API、三个 Worker、Tailscale 强退和重新登录后能恢复 | API/Worker 保持停止；不 downgrade、不清 Redis |
-| 4. 无写入生产冒烟 | Codex 可协助；正式 Sites 与 Funnel URL | 检查 Sites 页面、HTTPS、健康接口、安全响应头和 CORS | 页面可访问且深层路径不 404；API 健康；CORS 只允许正式 Sites origin；无业务写入 | 不进入真实业务流 |
-| 5. 一次真实单篇业务流 | 用户明确授权费用后；正式网站 | 一名教师完成邀请、登录、作业、Rubric、上传一篇、评分、复核和 Excel 导出；手机与第二位教师复用结果 | 只创建 1 个批次；评分和复核成功；教师隔离正确；Excel 可打开；队列最终归零 | 使用同一任务恢复，禁止再建批次 |
-| 6. 告警、回滚与收口 | 用户授权后；UptimeRobot、Mac、Sites、Supabase | 实际触发一次告警和恢复；Mac 与 Sites 同时回滚，再恢复候选；最后只读检查 | 告警和恢复均收到；两端回滚成功且已恢复候选；数据库仍为 `0019`；Redis 未清；队列为 0；关闭项仍关闭 | 进入维护状态，恢复最后一组一致版本 |
+| 4. 无写入生产冒烟 | Codex 可协助；正式 Sites 与 Funnel URL | 检查 Sites 页面、HTTPS、健康接口、安全响应头和 CORS | 页面可访问且深层路径不 404；API 健康；CORS 只允许正式 Sites origin；无业务写入 | 不进入下一节点 |
+| 5. 零费用只读业务检查 | 用户；正式网站、Supabase SQL Editor | 以既有账户登录，只浏览页面；核对模型调用硬开关和数据库计数未变化 | `PROVIDER_CALLS_ENABLED=false`；无新作业、批次、attempt、导出或供应商请求 | 保持硬开关关闭并停止 |
+| 6. 告警、回滚与收口 | 用户授权后；UptimeRobot、Mac、Sites、Supabase | 实际触发一次免费邮件告警和恢复；暂停监控后同时回滚 Mac 与 Sites，再恢复候选；最后只读检查 | 告警和恢复均收到；两端回滚成功且已恢复候选；数据库仍为 `0019`；Redis 未清；队列为 0；关闭项仍关闭 | 暂停监控，恢复最后一组一致版本 |
 
 ## 节点 1：本地检查完成后仍需新候选 CI
 
@@ -70,16 +88,20 @@ print "stage14_local_candidate_gate=true"
 | 检查 | 通过 | 失败 |
 |---|---:|---:|
 | 本地预部署门禁 | 1 | 0 |
-| 阶段 14 聚焦后端测试 | 32 | 0 |
+| 阶段 14 聚焦后端测试 | 87 | 0 |
+| 完整后端回归 | 513 | 0 |
+| 前端单元测试 | 70 | 0 |
 | Sites 构建与路由测试 | 2 | 0 |
+| 桌面与手机浏览器测试 | 2 | 0 |
+| 源码与 Sites 构建密钥扫描 | 2 | 0 |
 | 历史候选 SHA GitHub CI | 8 | 0 |
 | 回滚 SHA GitHub CI | 8 | 0 |
 
-`d99dd5f` 已精确取得 8/8 CI，但节点 2.1 真实运行发现它仍会预建 0 字节 Tailscale 状态文件。修复提交 `29a59b9ab88c1a78ffaaeb07862fa6e1bc729443` 已由 GitHub Actions 官方 API 核对为精确 SHA、8 个 jobs 全部 success。由于本次又修正了验收文档和项目记录，必须提交这些修正并以新 SHA 再取得 8/8，才能进入节点 2。
+`39b14ac156e3c0b77085757b6851bf73f79d063c` 已精确取得 8/8 CI，但不含本轮 Tailscale 1.98 Funnel 修复和模型调用硬开关。必须把本轮全部改动提交，并以新 SHA 再取得 8/8，才能进入节点 2。
 
 ### 1.2 生成并推送新候选
 
-先执行 `git status --short`，人工确认只包含本轮 5 个文档文件：`CONTEXT.md`、`docs/STAGE14_ACCEPTANCE.md`、`lessons.md`、`progress.md`、`task_plan.md`。若出现其他文件，停止，不要提交。
+先执行 `git status --short`，人工确认只包含本轮 Funnel、零费用硬门禁、测试、验收文档和项目记录文件。文件清单以本节提交块为准；若出现其他文件，停止，不要提交。
 
 用户确认允许提交和推送后，先在终端 A执行提交块。提交成功后不要再次执行此块：
 
@@ -89,13 +111,36 @@ set -euo pipefail
 cd "/Users/a1-6/Documents/Paper Grading"
 test "$(git branch --show-current)" = "main"
 git add -- \
+  .github/workflows/ci.yml \
+  ARCHITECTURE.md \
   CONTEXT.md \
+  README.md \
+  backend/app/config.py \
+  backend/app/providers/dependencies.py \
+  backend/app/rubrics/dependencies.py \
+  backend/app/rubrics/service.py \
+  backend/app/workers/celery_app.py \
+  backend/tests/test_assignment_api.py \
+  backend/tests/test_assignment_service.py \
+  backend/tests/test_celery_runtime.py \
+  backend/tests/test_config.py \
+  backend/tests/test_provider_api.py \
+  backend/tests/test_stage14_delivery_contract.py \
+  backend/tests/test_stage14_local_deployment_scripts.py \
   docs/STAGE14_ACCEPTANCE.md \
+  findings.md \
+  infra/local/production.env.example \
+  infra/local/run-component.sh \
+  infra/local/stage14-funnel.sh \
+  infra/local/update-production-env.sh \
+  infra/local/validate-release.sh \
+  infra/local/verify-runtime.sh \
+  infra/local/watchdog.sh \
   lessons.md \
   progress.md \
   task_plan.md
 git diff --cached --check
-git commit -m "docs: make stage 14 recovery steps resumable"
+git commit -m "fix: enforce zero-cost stage 14 acceptance"
 candidate_sha=$(git rev-parse HEAD)
 print "candidate_sha=$candidate_sha"
 print "stage14_candidate_committed=true"
@@ -118,7 +163,7 @@ print "stage14_candidate_pushed=true"
 )
 ```
 
-最终 `candidate_sha` 必须是包含上述 5 个文件的最新提交；不得继续使用 `29a59b9` 进入节点 2。
+最终 `candidate_sha` 必须是包含上述全部文件的最新提交；不得继续使用 `39b14ac` 或更旧 SHA 进入节点 2。
 
 ### 1.3 核对新候选 CI
 
@@ -140,7 +185,6 @@ print "stage14_candidate_pushed=true"
 |---|---|---|
 | 终端 A | release、环境文件、Redis、数据库迁移、LaunchAgent、只读探针 | `/Users/a1-6/Documents/Paper Grading` |
 | 终端 B | Tailscale 登录、Funnel、临时 daemon 到 LaunchAgent 的交接 | `/Users/a1-6/Documents/Paper Grading` |
-| 终端 C | 只运行一次的真实 E2E | 稳定 `current` release |
 | 终端 D | 告警、回滚、恢复候选 | 稳定 `current` release |
 | Supabase SQL Editor | revision、队列和安全状态的只读 SQL | 目标生产项目 |
 | Supabase Dashboard | Auth、Storage、Network Restrictions | 目标生产项目 |
@@ -154,27 +198,65 @@ print "stage14_candidate_pushed=true"
 
 本节点会修改本机 Tailscale/Funnel、创建本机 release，并在 Sites 保存私有版本；执行前需用户明确授权。
 
+先在 Supabase、Tailscale、UptimeRobot 和 Sites 账户页面完成“零费用口径与进入门禁”。全部符合后，在终端 A执行确认块；它不会代替网页检查，只防止误操作：
+
+```zsh
+(
+set -euo pipefail
+read -r "zero_cost_auth?确认所有账户页面均显示本次阶段14新增费用为0后，输入 I_CONFIRM_STAGE14_ZERO_INCREMENTAL_COST："
+test "$zero_cost_auth" = "I_CONFIRM_STAGE14_ZERO_INCREMENTAL_COST"
+print "stage14_zero_incremental_cost_authorized=true"
+)
+```
+
 ### 2.1 登录 Tailscale
 
 先关闭会制造 fake-IP 的 VPN 系统代理/虚拟网卡模式。密码、Passkey 和验证码只由用户在 Chrome 输入。
 
 执行位置：终端 B。
 
-先确认当前项目目录就是节点 1 取得 8/8 CI 的候选，且没有未提交改动。否则停止，不得使用旧脚本继续：
+先自动确认当前项目目录就是节点 1 取得 8/8 CI 的候选，且没有未提交改动。这里读取的是 40 位 Git commit SHA，不是以 `sha256:` 开头的构建摘要；无需手工输入：
 
 ```zsh
 (
 set -euo pipefail
 cd "/Users/a1-6/Documents/Paper Grading"
-read -r "candidate_sha?输入已取得 CI 8/8 的新候选完整 SHA："
+test "$(git branch --show-current)" = "main"
+candidate_sha=$(git rev-parse HEAD)
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-test "$(git rev-parse HEAD)" = "$candidate_sha"
 test -z "$(git status --porcelain)"
+remote_sha=$(git -c http.version=HTTP/1.1 ls-remote origin refs/heads/main | /usr/bin/cut -f1)
+test "$candidate_sha" = "$remote_sha"
+print "candidate_sha=$candidate_sha"
 print "stage14_tailscale_candidate_checkout_verified=true"
 )
 ```
 
-如果曾出现 `cannot start backend when state store is unhealthy`，先执行下面的恢复块。它只接受由旧脚本误建的 0 字节普通文件，并移动到同目录备份；不会删除有效 Tailscale 身份。其他状态一律停止。
+先执行下面的只读状态分类块。有效的非空状态会打印 `stage14_tailscale_state_valid=true`，此时直接跳过隔离块；文件不存在会打印 `stage14_tailscale_new_login_required=true`，也直接进入登录块：
+
+```zsh
+(
+set -euo pipefail
+state_file="$HOME/Library/Application Support/Paper Grading/shared/tailscale/tailscaled.state"
+if [[ ! -e "$state_file" && ! -L "$state_file" ]]; then
+  print "stage14_tailscale_new_login_required=true"
+  exit 0
+fi
+test -f "$state_file"
+test ! -L "$state_file"
+test "$(/usr/bin/stat -f '%u' "$state_file")" = "$(/usr/bin/id -u)"
+state_size=$(/usr/bin/stat -f '%z' "$state_file")
+if [[ "$state_size" = "0" ]]; then
+  print "stage14_empty_tailscale_state_detected=true"
+else
+  test "$state_size" -gt 0
+  test "$(/usr/bin/stat -f '%Lp' "$state_file")" = "600"
+  print "stage14_tailscale_state_valid=true"
+fi
+)
+```
+
+只有分类结果是 `stage14_empty_tailscale_state_detected=true`，才执行下面的隔离块。它会先再次证明文件仍为空，再停止临时 daemon 并移动到同目录备份；绝不会先停止持有有效身份的 daemon：
 
 ```zsh
 (
@@ -182,11 +264,11 @@ set -euo pipefail
 cd "/Users/a1-6/Documents/Paper Grading"
 runtime_root="$HOME/Library/Application Support/Paper Grading"
 state_file="$runtime_root/shared/tailscale/tailscaled.state"
-./infra/local/tailscale-login.sh stop
 test -f "$state_file"
 test ! -L "$state_file"
 test "$(/usr/bin/stat -f '%u' "$state_file")" = "$(/usr/bin/id -u)"
 test "$(/usr/bin/stat -f '%z' "$state_file")" = "0"
+./infra/local/tailscale-login.sh stop
 backup_file="$state_file.empty.$(/bin/date -u '+%Y%m%dT%H%M%SZ')"
 test ! -e "$backup_file"
 /bin/mv -- "$state_file" "$backup_file"
@@ -196,7 +278,7 @@ print "stage14_empty_tailscale_state_quarantined=true"
 )
 ```
 
-只有打印 `stage14_empty_tailscale_state_quarantined=true` 才继续。备份文件保留到阶段 14 完成，不要删除。
+若执行了隔离块，只有打印 `stage14_empty_tailscale_state_quarantined=true` 才继续。备份文件保留到阶段 14 完成，不要删除。
 
 随后执行登录块：
 
@@ -216,6 +298,8 @@ print "stage14_tailscale_logged_in=true"
 ### 2.2 启用 Funnel
 
 执行位置：终端 B。该操作把固定 HTTPS 入口转发到本机 `127.0.0.1:8000`。
+
+必须使用包含本轮修复的新候选。旧脚本会因 Tailscale 1.98 的参数解析返回 `must specify either --service=... or --all`；该失败发生在配置写入前，随后看到 `No serve config` 只是说明 Funnel 尚未启用，不需要手工 `reset`。
 
 ```zsh
 (
@@ -259,8 +343,11 @@ print "stage14_temporary_funnel_restored=true"
 set -euo pipefail
 cd "/Users/a1-6/Documents/Paper Grading"
 runtime_root="$HOME/Library/Application Support/Paper Grading"
-read -r "candidate_sha?输入已取得 CI 8/8 的新候选完整 SHA："
+candidate_sha=$(git rev-parse HEAD)
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
+test -z "$(git status --porcelain)"
+remote_sha=$(git -c http.version=HTTP/1.1 ls-remote origin refs/heads/main | /usr/bin/cut -f1)
+test "$candidate_sha" = "$remote_sha"
 rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
 read -r "VITE_API_BASE_URL?输入刚记录的 Funnel HTTPS origin："
 read -r "VITE_SUPABASE_URL?输入生产 Supabase 项目 URL："
@@ -278,6 +365,23 @@ test -x "$manager"
 "$manager" "$candidate_sha" --prepare-only
 test "$(/usr/bin/stat -f '%Y' "$runtime_root/current")" = \
   "$runtime_root/releases/$candidate_sha"
+
+acceptance_dir="$runtime_root/shared/acceptance"
+candidate_file="$acceptance_dir/candidate-sha"
+test -d "$acceptance_dir"
+test ! -L "$acceptance_dir"
+if [[ -e "$candidate_file" || -L "$candidate_file" ]]; then
+  test -f "$candidate_file"
+  test ! -L "$candidate_file"
+  test "$(/usr/bin/stat -f '%u' "$candidate_file")" = "$(/usr/bin/id -u)"
+fi
+candidate_temp="$candidate_file.$$"
+trap '/bin/rm -f -- "$candidate_temp"' EXIT INT TERM
+print -r -- "$candidate_sha" >"$candidate_temp"
+/bin/chmod 600 "$candidate_temp"
+/bin/mv -f "$candidate_temp" "$candidate_file"
+trap - EXIT INT TERM
+test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
 print "stage14_two_local_releases_prepared=true"
 )
 ```
@@ -316,7 +420,9 @@ Codex 必须按以下顺序执行：
 
 ### 3.1 Supabase 只读预检
 
-执行位置：目标生产 Supabase SQL Editor。
+执行位置：目标生产 Supabase Dashboard 和 SQL Editor。
+
+先打开组织 Billing/Usage，必须同时满足：Plan=`Free`、当前费用=`$0`、没有 add-on/Marketplace/付费试用、项目未超过 500MB 数据库、1GB Storage、5GB egress 等当前免费额度。任何字段不是 0 元或无法确认，立即停止。免费项目可能因一周不活跃被暂停，这是可用性限制，不是收费理由。
 
 ```sql
 select version_num from public.alembic_version;
@@ -371,10 +477,11 @@ where schemaname = 'storage' and tablename = 'objects';
 
 执行位置：UptimeRobot。
 
-1. 创建 HTTP(S) monitor：`<Funnel origin>/health/ready`，检查间隔设为免费方案支持的 5 分钟，先保持暂停。
-2. 创建 Heartbeat/Cron monitor：期望间隔设为 1 分钟，grace period 设为 2 分钟，先保持暂停。这与本机每 60 秒执行一次的 watchdog 匹配。
-3. 两个 monitor 都选择用户实际能收到邮件或推送的同一通知联系人；先使用 UptimeRobot 的测试通知确认联系人可达。
-4. Heartbeat URL只存入密码管理器，下一步由脚本隐藏输入，不要发送到聊天。
+1. 再次确认账户显示 `Free`、费用为 0、监控数不超过 50；不要开始 Solo/Team 试用。
+2. 创建 HTTP(S) monitor：`<Funnel origin>/health/ready`，检查间隔固定为免费方案的 5 分钟，先保持暂停。
+3. 创建 Heartbeat/Cron monitor：期望间隔设为 5 分钟，grace period 设为 2 分钟，先保持暂停。本机 watchdog 每 60 秒发送一次，仍在该免费窗口内。
+4. 两个 monitor 都只选择免费邮件通知联系人；先用测试通知确认联系人可达。禁止 SMS、语音、自动充值和付费集成。
+5. Heartbeat URL只存入密码管理器，下一步由脚本隐藏输入，不要发送到聊天。
 
 ### 3.3 创建生产环境文件
 
@@ -406,6 +513,8 @@ print "stage14_environment_files_created=true"
 
 输入错误时不要手工编辑文件；取得授权后运行同一脚本的 `--replace`。
 
+脚本会固定写入 `PROVIDER_CALLS_ENABLED=false`。它不提供把该值改为 `true` 的提示；阶段 14 期间也禁止手工修改。
+
 随后仍在终端 A验证权限：
 
 ```zsh
@@ -425,6 +534,8 @@ for env_path in "$env_dir/production.env" "$env_dir/grading-worker.env"; do
   test "$(stat -f '%Su' "$env_path")" = "$USER"
   test "$(stat -f '%Lp' "$env_path")" = "600"
 done
+source "$env_dir/production.env"
+test "${PROVIDER_CALLS_ENABLED:-}" = "false"
 print "stage14_environment_file_permissions=true"
 )
 ```
@@ -582,12 +693,18 @@ runtime_root="$HOME/Library/Application Support/Paper Grading"
 current="$runtime_root/current"
 env_dir="$runtime_root/shared/env"
 cd "$current"
-read -r "candidate_sha?输入已取得 CI 8/8 的新候选完整 SHA："
+candidate_file="$runtime_root/shared/acceptance/candidate-sha"
+test -f "$candidate_file"
+test ! -L "$candidate_file"
+test "$(/usr/bin/stat -f '%u' "$candidate_file")" = "$(/usr/bin/id -u)"
+test "$(/usr/bin/stat -f '%Lp' "$candidate_file")" = "600"
+test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
+IFS= read -r candidate_sha <"$candidate_file"
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
 rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
+validator="$current/infra/local/validate-release.sh"
 for release_sha in "$candidate_sha" "$rollback_sha"; do
-  "$runtime_root/releases/$release_sha/infra/local/validate-release.sh" \
-    "$release_sha" --env-dir "$env_dir"
+  "$validator" "$release_sha" --env-dir "$env_dir"
 done
 set -a
 source "$env_dir/production.env"
@@ -649,63 +766,6 @@ async def main() -> None:
 
 asyncio.run(main())
 print("stage14_database_roles_verified=true")
-PY
-)
-```
-
-继续在终端 A执行零费用供应商密钥与网络策略探针。它只解密现有 Key并检查 base URL，不发送模型请求：
-
-```zsh
-(
-set -euo pipefail
-runtime_root="$HOME/Library/Application Support/Paper Grading"
-current="$runtime_root/current"
-cd "$current"
-set -a
-source "$runtime_root/shared/env/production.env"
-set +a
-
-PYTHONPATH=backend ./.venv/bin/python - <<'PY'
-import asyncio
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
-from app.config import Settings
-from app.domain.enums import ProviderType
-from app.providers.connection import ProviderBaseUrlPolicy
-from app.security.encryption import ApiKeyCipher, EncryptedApiKey
-
-settings = Settings.load()
-cipher = ApiKeyCipher.from_base64_master_key(
-    settings.provider_master_key.get_secret_value()
-)
-
-async def main() -> None:
-    engine = create_async_engine(settings.database_url, poolclass=NullPool)
-    try:
-        async with engine.connect() as connection:
-            rows = (await connection.execute(text(
-                "select id, provider_type, base_url, encrypted_api_key, api_key_nonce "
-                "from public.provider_configs where status = 'enabled' "
-                "and encrypted_api_key is not null and api_key_nonce is not null"
-            ))).mappings().all()
-        if not rows:
-            raise SystemExit("stage14_enabled_provider_missing")
-        for row in rows:
-            cipher.decrypt(
-                EncryptedApiKey(
-                    ciphertext=row["encrypted_api_key"], nonce=row["api_key_nonce"]
-                ),
-                provider_id=row["id"],
-            )
-            await ProviderBaseUrlPolicy().validate(
-                ProviderType(row["provider_type"]), row["base_url"]
-            )
-    finally:
-        await engine.dispose()
-
-asyncio.run(main())
-print("stage14_provider_key_and_network_policy_verified=true")
 PY
 )
 ```
@@ -963,84 +1023,87 @@ print "stage14_api_read_only_smoke=true"
 
 在 Chrome DevTools → Network 重新加载 `/login`，点开页面主文档响应，确认正式 Sites 页面本身也包含：`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: no-referrer`、`Permissions-Policy: camera=(), microphone=(), geolocation=()`。API 和 Sites 两侧任一缺失都视为节点 4 失败。
 
-## 节点 5：一次真实单篇业务流
+## 节点 5：零费用只读业务检查
 
-### 5.1 当前必须停止的代码门禁
+阶段 14 不再运行真实单篇业务流。原因很直接：Rubric 生成和评分都会调用外部模型，无法保证费用为 0。`run-stage14-e2e.sh --start|--resume|--postcondition` 三个命令全部禁止执行；真实模型质量校准移到阶段 14 之后，另行授权和计费。
 
-执行位置：终端 A。该检查当前预期返回失败；它只用于防止误开始付费流程。
+### 5.1 验证模型调用硬开关
 
-```zsh
-(
-set -euo pipefail
-cd "/Users/a1-6/Documents/Paper Grading"
-if /usr/bin/grep -Fq 'not_implemented' infra/local/run-stage14-e2e.sh; then
-  print -u2 "stage14_paid_flow_gate=false"
-  exit 1
-fi
-print "stage14_paid_flow_gate=true"
-)
-```
+执行位置：终端 A。
 
-只有以下三项都实现并通过测试后，才能继续：
-
-1. `--resume` 和 `--postcondition` 不再返回 `not_implemented`；
-2. `--start` 写入前会查询生产端，拒绝已存在的同名作业、批次、attempt 或导出；
-3. Sites bypass 有不经过聊天、文件、剪贴板或命令参数的受控进程交接通道。
-
-### 5.2 门禁修复后的人工准备
-
-执行位置：Chrome、邮箱和供应商账户页面。
-
-1. 用户明确授权一个真实单篇流程及费用上限。
-2. 在供应商页面确认账户/子账户硬消费上限；无法确认就停止。
-3. 管理员在正式网站只邀请一名全新教师 A；教师 A从邮箱打开一次性链接、设密并首次登录。
-4. 准备一名既有教师 B，只用于隔离检查，不再创建账号。
-5. 准备无敏感内容的 Assignment Prompt、Rubric 和一篇不超过 20MiB 的 PDF/DOCX。
-6. 作业标题使用唯一 `Stage14-日期时间-短标识`，并只保存在本机。
-
-修复后的 runner 必须在受控进程内收集并校验：正式 Sites URL、教师 A/B 邮箱与密码、教师 A显示名、模型标签、唯一作业标题、Assignment Prompt 路径、Rubric 路径、论文路径、总分和分数步长。密码与 Sites bypass 必须隐藏/内存输入，其余值也不得写入 Git或聊天。
-
-### 5.3 门禁修复后的唯一启动命令
-
-执行位置：全新终端 C。Sites bypass 由受控执行器注入，不能人工显示或粘贴。
+该开关同时覆盖三条可能产生模型费用的入口：供应商连接测试不构造测试客户端，Rubric 自动
+结构化在读取数据库前拒绝，评分任务和周期分发在访问数据库或网络前拒绝。
 
 ```zsh
 (
 set -euo pipefail
 runtime_root="$HOME/Library/Application Support/Paper Grading"
-runner="$runtime_root/current/infra/local/run-stage14-e2e.sh"
-test -x "$runner"
-"$runner" --start
+current="$runtime_root/current"
+env_dir="$runtime_root/shared/env"
+candidate_file="$runtime_root/shared/acceptance/candidate-sha"
+test -f "$candidate_file"
+test ! -L "$candidate_file"
+test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
+IFS= read -r candidate_sha <"$candidate_file"
+print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
+test "$(/usr/bin/stat -f '%Y' "$runtime_root/current")" = \
+  "$runtime_root/releases/$candidate_sha"
+
+set -a
+source "$env_dir/production.env"
+set +a
+test "${PROVIDER_CALLS_ENABLED:-}" = "false"
+PYTHONPATH="$current/backend" "$current/.venv/bin/python" - <<'PY'
+from app.config import Settings
+
+if Settings.load().provider_calls_enabled:
+    raise SystemExit("stage14_api_provider_calls_enabled")
+PY
+
+set -a
+source "$env_dir/grading-worker.env"
+set +a
+PYTHONPATH="$current/backend" "$current/.venv/bin/python" - <<'PY'
+from app.config import WorkerSettings
+
+if WorkerSettings.load().provider_calls_enabled:
+    raise SystemExit("stage14_worker_provider_calls_enabled")
+PY
+
+"$current/infra/local/verify-runtime.sh"
+print "stage14_zero_cost_runtime_guard=true"
 )
 ```
 
-`--start` 只允许执行一次。若复核或导出失败，只能在全新终端 C执行下面的完整恢复块：
+### 5.2 保存只读基线并浏览页面
+
+执行位置：Supabase SQL Editor。运行下面的只读查询，把一行结果保存在本机验收记录；不要发到聊天：
+
+```sql
+select
+  (select count(*) from public.assignments) as assignments_count,
+  (select count(*) from public.grading_jobs) as grading_jobs_count,
+  (select count(*) from public.grading_job_items) as grading_items_count,
+  (select count(*) from public.grading_attempts) as grading_attempts_count,
+  (select count(*) from public.exports) as exports_count,
+  (select max(provider_call_started_at) from public.grading_attempts)
+    as last_provider_call_started_at;
+```
+
+执行位置：Chrome。使用一个已经存在的账户登录，只浏览 `/assignments`、`/grading-jobs`、`/exports` 和已有详情页。不得点击或提交以下操作：邀请账户、创建/修改作业、生成 Rubric、上传文件、创建批改任务、供应商连接测试、生成导出。页面不空白、无 404、Console 错误和警告为 0 即可。
+
+### 5.3 证明浏览没有产生写入或模型调用
+
+回到 Supabase SQL Editor，原样重跑 5.2 的查询。六列必须与基线完全一致。然后终端 A执行人工确认块：
 
 ```zsh
 (
 set -euo pipefail
-runtime_root="$HOME/Library/Application Support/Paper Grading"
-runner="$runtime_root/current/infra/local/run-stage14-e2e.sh"
-test -x "$runner"
-"$runner" --resume
+read -r "readonly_auth?确认5.2前后六列完全一致后，输入 I_CONFIRM_STAGE14_READONLY_NO_PROVIDER_CALL："
+test "$readonly_auth" = "I_CONFIRM_STAGE14_READONLY_NO_PROVIDER_CALL"
+print "stage14_zero_cost_readonly_business_check=true"
 )
 ```
-
-若业务已完成但浏览器断言失败，只能在全新终端 C执行：
-
-```zsh
-(
-set -euo pipefail
-runtime_root="$HOME/Library/Application Support/Paper Grading"
-runner="$runtime_root/current/infra/local/run-stage14-e2e.sh"
-test -x "$runner"
-"$runner" --postcondition
-)
-```
-
-禁止删除 marker、删除业务记录或再次执行 `--start`。当前两个恢复命令尚未实现，因此节点 5 仍停止在 5.1。
-
-通过标准：1 个作业、1 个单篇批次；Rubric、评分、复核和 Excel 导出完成；教师 B 看不到教师 A 数据；手机复用同一结果；Console 错误/警告为 0。
 
 ## 节点 6：队列、告警、回滚与收口
 
@@ -1128,7 +1191,7 @@ select
 
 ### 6.2 实际告警与恢复
 
-先在 UptimeRobot 启用 HTTP 和 Heartbeat 两个监控，等待两者显示正常，并确认测试通知已送达。确认 6.1 全部归零后，在终端 D执行。停止导出 Worker 后，最多等待 5 分钟；这是 1 分钟 Heartbeat 加 2 分钟 grace 和告警处理余量。5 分钟仍未收到就输入 `FAIL`，脚本会恢复 Worker，本项判定失败。
+先在 UptimeRobot 启用 HTTP 和 Heartbeat 两个监控，等待两者显示正常，并确认免费邮件测试通知已送达。确认 6.1 全部归零后，在终端 D执行。停止导出 Worker 后，脚本最多等待 12 分钟；这是 5 分钟 Heartbeat、2 分钟 grace、免费方案检测和邮件投递余量。超时会自动恢复 Worker并判定失败。
 
 ```zsh
 (
@@ -1142,7 +1205,10 @@ restore_export() {
 }
 trap restore_export EXIT
 launchctl bootout "gui/$UID" "$plist"
-read -r "alert_result?收到 UptimeRobot 告警后输入 I_RECEIVED_ALERT；未收到输入 FAIL："
+if ! read -t 720 -r "alert_result?收到 UptimeRobot 免费邮件告警后输入 I_RECEIVED_ALERT："; then
+  print -u2 "stage14_uptimerobot_alert_timeout=true"
+  exit 1
+fi
 test "$alert_result" = "I_RECEIVED_ALERT"
 )
 ```
@@ -1175,29 +1241,35 @@ exit 1
 
 ### 6.3 回滚 Mac 和 Sites
 
-先在 UptimeRobot 建立维护窗口，并再次确认 6.1 队列为 0。终端 D执行：
+UptimeRobot 免费方案不能建立维护窗口。先手工暂停 HTTP 和 Heartbeat 两个监控，确认页面均显示暂停，再次确认 6.1 队列为 0，然后终端 D执行：
 
 ```zsh
 (
 set -euo pipefail
 runtime_root="$HOME/Library/Application Support/Paper Grading"
 agents="$HOME/Library/LaunchAgents"
-read -r "candidate_sha?输入已部署候选的完整 SHA："
+candidate_file="$runtime_root/shared/acceptance/candidate-sha"
+test -f "$candidate_file"
+test ! -L "$candidate_file"
+test "$(/usr/bin/stat -f '%u' "$candidate_file")" = "$(/usr/bin/id -u)"
+test "$(/usr/bin/stat -f '%Lp' "$candidate_file")" = "600"
+test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
+IFS= read -r candidate_sha <"$candidate_file"
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
 rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
 manager="$runtime_root/shared/bin/switch-release.sh"
 env_dir="$runtime_root/shared/env"
 source "$env_dir/production.env"
 export REDIS_URL
+validator="$runtime_root/releases/$candidate_sha/infra/local/validate-release.sh"
 
 for release_sha in "$candidate_sha" "$rollback_sha"; do
-  "$runtime_root/releases/$release_sha/infra/local/validate-release.sh" \
-    "$release_sha" --env-dir "$env_dir"
+  "$validator" "$release_sha" --env-dir "$env_dir"
 done
 
-start_business() {
+start_components() {
   start_ok=true
-  for component in api grading export; do
+  for component in "$@"; do
     plist="$agents/com.paper-grading.$component.plist"
     if ! launchctl print "gui/$UID/com.paper-grading.$component" >/dev/null 2>&1; then
       if ! launchctl bootstrap "gui/$UID" "$plist"; then
@@ -1238,7 +1310,7 @@ restore_candidate_on_failure() {
   done
   if assert_no_workers; then
     if "$manager" "$candidate_sha"; then
-      start_business
+      start_components api grading export
       if (( $? != 0 )); then recovery_ok=false; fi
     else
       recovery_ok=false
@@ -1274,25 +1346,62 @@ for component in grading export api; do
 done
 assert_no_workers
 "$manager" "$rollback_sha"
-start_business
-for _ in {1..60}; do
+start_components api export
+verify_readonly_rollback() {
   current_target=$(/usr/bin/stat -f '%Y' "$runtime_root/current")
-  if [[ "$current_target" = "$runtime_root/releases/$rollback_sha" ]] && \
-     "$runtime_root/current/infra/local/verify-runtime.sh" >/dev/null 2>&1; then
+  [[ "$current_target" = "$runtime_root/releases/$rollback_sha" ]] || return 1
+  launchctl print "gui/$UID/com.paper-grading.api" >/dev/null 2>&1 || return 1
+  launchctl print "gui/$UID/com.paper-grading.export" >/dev/null 2>&1 || return 1
+  if launchctl print "gui/$UID/com.paper-grading.grading" >/dev/null 2>&1; then
+    return 1
+  fi
+  curl --fail --silent --show-error http://127.0.0.1:8000/health/live >/dev/null || return 1
+  curl --fail --silent --show-error http://127.0.0.1:8000/health/ready >/dev/null || return 1
+  worker_status="$("$runtime_root/current/.venv/bin/celery" \
+    -b "$REDIS_URL" inspect ping --json --timeout 10)" || return 1
+  print -rn -- "$worker_status" | "$runtime_root/current/.venv/bin/python" -c '
+import json
+import sys
+
+names = list(json.load(sys.stdin))
+if len(names) != 1 or not names[0].startswith("exports@"):
+    raise SystemExit("stage14_rollback_worker_set_invalid")
+' || return 1
+  PYTHONPATH="$runtime_root/current/backend" \
+    "$runtime_root/current/.venv/bin/python" - <<'PY'
+import os
+import redis
+
+client = redis.Redis.from_url(os.environ["REDIS_URL"])
+counts = [
+    client.llen("paper_grading.grading"),
+    client.llen("paper_grading.maintenance"),
+    client.llen("paper_grading.exports"),
+    client.hlen("unacked"),
+    client.zcard("unacked_index"),
+]
+if any(counts):
+    raise SystemExit("stage14_rollback_broker_not_empty")
+PY
+}
+for _ in {1..60}; do
+  if verify_readonly_rollback; then
     trap - EXIT INT TERM
-    print "stage14_backend_rollback_verified=true"
+    print "stage14_backend_readonly_rollback_verified=true"
     exit 0
   fi
   sleep 2
 done
-print -u2 "stage14_backend_rollback_verified=false"
+print -u2 "stage14_backend_readonly_rollback_verified=false"
 exit 1
 )
 ```
 
-执行位置：Codex Sites。私有部署已经保存的回滚 Sites 版本，轮询到 `succeeded`；再次确认 owner-only。Chrome 检查五个路径和 API 健康。
+回滚 SHA 早于本轮模型硬开关，因此回滚期间评分/维护 Worker 必须保持停止，只启动 API 和导出 Worker做只读健康验证。不得进入供应商配置页或触发任何写操作。
 
-Sites 回滚的部署调用、状态轮询、owner-only 复核、五路径检查或 API 健康检查中任一项失败，都立即执行 6.4 的 Mac 候选恢复块，并私有部署候选 Sites 版本；候选部署也必须完成状态轮询、owner-only、五路径和 API 健康复核。两端恢复为候选且全部验证通过前保持维护窗口。
+执行位置：Codex Sites。私有部署已经保存的回滚 Sites 版本，轮询到 `succeeded`；再次确认 owner-only。Chrome 只检查五个路径能加载和 API 健康，不登录、不写入。
+
+Sites 回滚的部署调用、状态轮询、owner-only 复核、五路径检查或 API 健康检查中任一项失败，都立即执行 6.4 的 Mac 候选恢复块，并私有部署候选 Sites 版本；候选部署也必须完成状态轮询、owner-only、五路径和 API 健康复核。两端恢复为候选且全部验证通过前保持两个监控暂停。
 
 执行位置：Supabase SQL Editor。
 
@@ -1311,22 +1420,28 @@ select version_num from public.alembic_version;
 set -euo pipefail
 runtime_root="$HOME/Library/Application Support/Paper Grading"
 agents="$HOME/Library/LaunchAgents"
-read -r "candidate_sha?输入已部署候选的完整 SHA："
+candidate_file="$runtime_root/shared/acceptance/candidate-sha"
+test -f "$candidate_file"
+test ! -L "$candidate_file"
+test "$(/usr/bin/stat -f '%u' "$candidate_file")" = "$(/usr/bin/id -u)"
+test "$(/usr/bin/stat -f '%Lp' "$candidate_file")" = "600"
+test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
+IFS= read -r candidate_sha <"$candidate_file"
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
 rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
 manager="$runtime_root/shared/bin/switch-release.sh"
 env_dir="$runtime_root/shared/env"
 source "$env_dir/production.env"
 export REDIS_URL
+validator="$runtime_root/releases/$candidate_sha/infra/local/validate-release.sh"
 
 for release_sha in "$rollback_sha" "$candidate_sha"; do
-  "$runtime_root/releases/$release_sha/infra/local/validate-release.sh" \
-    "$release_sha" --env-dir "$env_dir"
+  "$validator" "$release_sha" --env-dir "$env_dir"
 done
 
-start_business() {
+start_components() {
   start_ok=true
-  for component in api grading export; do
+  for component in "$@"; do
     plist="$agents/com.paper-grading.$component.plist"
     if ! launchctl print "gui/$UID/com.paper-grading.$component" >/dev/null 2>&1; then
       if ! launchctl bootstrap "gui/$UID" "$plist"; then
@@ -1338,6 +1453,33 @@ start_business() {
     fi
   done
   [[ "$start_ok" = true ]]
+}
+
+verify_readonly_rollback() {
+  current_target=$(/usr/bin/stat -f '%Y' "$runtime_root/current" 2>/dev/null) || return 1
+  [[ "$current_target" = "$runtime_root/releases/$rollback_sha" ]] || return 1
+  launchctl print "gui/$UID/com.paper-grading.api" >/dev/null 2>&1 || return 1
+  launchctl print "gui/$UID/com.paper-grading.export" >/dev/null 2>&1 || return 1
+  if launchctl print "gui/$UID/com.paper-grading.grading" >/dev/null 2>&1; then
+    return 1
+  fi
+  curl --fail --silent --show-error http://127.0.0.1:8000/health/live >/dev/null || return 1
+  curl --fail --silent --show-error http://127.0.0.1:8000/health/ready >/dev/null || return 1
+  worker_status="$("$runtime_root/current/.venv/bin/celery" \
+    -b "$REDIS_URL" inspect ping --json --timeout 10)" || return 1
+  print -rn -- "$worker_status" | "$runtime_root/current/.venv/bin/python" -c '
+import json
+import sys
+
+names = list(json.load(sys.stdin))
+if len(names) != 1 or not names[0].startswith("exports@"):
+    raise SystemExit("stage14_rollback_worker_set_invalid")
+' || return 1
+  for queue in paper_grading.grading paper_grading.maintenance paper_grading.exports; do
+    [[ "$(/opt/homebrew/bin/redis-cli -u "$REDIS_URL" LLEN "$queue")" = "0" ]] || return 1
+  done
+  [[ "$(/opt/homebrew/bin/redis-cli -u "$REDIS_URL" HLEN unacked)" = "0" ]] || return 1
+  [[ "$(/opt/homebrew/bin/redis-cli -u "$REDIS_URL" ZCARD unacked_index)" = "0" ]] || return 1
 }
 
 assert_no_workers() {
@@ -1367,7 +1509,7 @@ restore_rollback_on_failure() {
   done
   if assert_no_workers; then
     if "$manager" "$rollback_sha"; then
-      start_business
+      start_components api export
       if (( $? != 0 )); then recovery_ok=false; fi
     else
       recovery_ok=false
@@ -1377,9 +1519,7 @@ restore_rollback_on_failure() {
   fi
   recovered=false
   for _ in {1..60}; do
-    current_target=$(/usr/bin/stat -f '%Y' "$runtime_root/current" 2>/dev/null)
-    if [[ "$current_target" = "$runtime_root/releases/$rollback_sha" ]] && \
-       "$runtime_root/current/infra/local/verify-runtime.sh" >/dev/null 2>&1; then
+    if verify_readonly_rollback; then
       recovered=true
       break
     fi
@@ -1403,7 +1543,7 @@ for component in grading export api; do
 done
 assert_no_workers
 "$manager" "$candidate_sha"
-start_business
+start_components api grading export
 for _ in {1..60}; do
   current_target=$(/usr/bin/stat -f '%Y' "$runtime_root/current")
   if [[ "$current_target" = "$runtime_root/releases/$candidate_sha" ]] && \
@@ -1421,12 +1561,12 @@ exit 1
 
 执行位置：Codex Sites。私有部署候选 Sites 版本，轮询到 `succeeded`，再次确认 owner-only，并复核五个路径和 API 健康。
 
-候选 Sites 的部署调用、状态轮询、owner-only、五路径或 API 健康复核中任一项失败，都立即把 Mac 按 6.3 的回滚块切回回滚 SHA，并私有部署回滚 Sites 版本；回滚 Sites 也必须完成相同复核。保持维护窗口，不创建第三个版本。
+候选 Sites 的部署调用、状态轮询、owner-only、五路径或 API 健康复核中任一项失败，都立即把 Mac 按 6.3 的回滚块切回回滚 SHA，并私有部署回滚 Sites 版本；回滚 Sites 也必须完成相同复核。保持两个监控暂停，不创建第三个版本。
 
 最后：
 
 1. Chrome 再检查五个路径；
-2. UptimeRobot 结束维护窗口，等待 HTTP 和 Heartbeat 都恢复正常；
+2. UptimeRobot 手工恢复 HTTP 和 Heartbeat 两个监控；服务已恢复时，暂停后再恢复会触发新检查。等待两者都正常；
 3. 重跑 6.1，确认队列仍为 0；
 4. Supabase Dashboard → Database → Network Restrictions 只读记录当前状态；若仍全网放行，写“用户接受的例外”，不能写“安全通过”；
 5. 生产配额仍关闭时，记录“活跃容量告警未启用”。
@@ -1439,7 +1579,7 @@ exit 1
 code_and_ci=true
 private_deployment_and_runtime=true
 readonly_production_smoke=true
-single_paid_flow=true
+zero_cost_readonly_business_check=true
 alert_and_recovery=true
 rollback_and_candidate_restore=true
 ```
@@ -1456,11 +1596,12 @@ Sites 候选/回滚版本：<版本号>/<版本号>
 code_and_ci：true/false
 private_deployment_and_runtime：true/false
 readonly_production_smoke：true/false
-single_paid_flow：true/false；<通过数>/<失败数>
+zero_cost_readonly_business_check：true/false
 alert_and_recovery：true/false
 rollback_and_candidate_restore：true/false
 队列收口：true/false
 配额/自动清理/备份：disabled
+模型调用：disabled；新增费用：0
 Database Network Restrictions：restricted/用户接受的全网放行例外
 活跃容量告警：enabled/not enabled
 ```

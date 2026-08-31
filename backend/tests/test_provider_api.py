@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -28,6 +29,16 @@ def build_test_settings() -> Settings:
         DATABASE_URL="postgresql+asyncpg://localhost:5432/paper_grading_test",
         **TEST_AUTH_SETTINGS,
     )
+
+
+def test_zero_cost_runtime_does_not_construct_a_provider_connection_tester() -> None:
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(settings=build_test_settings()))
+    )
+
+    service = get_provider_service(request, object())  # type: ignore[arg-type]
+
+    assert service._connection_tester is None
 
 
 def test_admin_creates_a_provider_without_the_api_key_in_the_response() -> None:

@@ -76,6 +76,7 @@ def test_explicit_test_configuration_is_valid() -> None:
     )
 
     assert settings.app_env is AppEnvironment.TEST
+    assert settings.provider_calls_enabled is False
 
 
 def test_development_can_explicitly_allow_official_provider_vpn_fake_ip() -> None:
@@ -442,6 +443,7 @@ def test_grading_worker_uses_only_its_required_runtime_settings() -> None:
     )
 
     assert settings.database_pool_size == 5
+    assert settings.provider_calls_enabled is False
     assert not hasattr(settings, "supabase_publishable_key")
     assert not hasattr(settings, "auth_invite_redirect_url")
     assert not hasattr(settings, "frontend_origin")

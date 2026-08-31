@@ -1,5 +1,6 @@
 """阶段十 Celery 运行时的队列隔离行为测试。"""
 
+import asyncio
 import importlib
 import logging
 import sys
@@ -96,6 +97,40 @@ def test_worker_does_not_log_private_storage_object_paths(
     load_celery_module(monkeypatch)
 
     assert logging.getLogger("httpx").level == logging.WARNING
+
+
+def test_zero_cost_worker_does_not_dispatch_provider_jobs(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    module = load_celery_module(monkeypatch)
+    assert module.settings.provider_calls_enabled is False
+
+    def fail_if_database_is_opened(_settings: object) -> None:
+        raise AssertionError("零费用模式不得查询待投递评分任务")
+
+    monkeypatch.setattr(module.Database, "from_settings", fail_if_database_is_opened)
+
+    assert asyncio.run(module._dispatch()) == 0
+
+
+def test_zero_cost_worker_rejects_a_preexisting_grading_task_before_database_access(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    module = load_celery_module(monkeypatch)
+    assert module.settings.provider_calls_enabled is False
+
+    def fail_if_database_is_opened(_settings: object) -> None:
+        raise AssertionError("零费用模式不得打开评分任务数据库连接")
+
+    monkeypatch.setattr(module.Database, "from_settings", fail_if_database_is_opened)
+
+    with pytest.raises(RuntimeError, match="provider_calls_disabled"):
+        asyncio.run(
+            module._run_grading_item(
+                UUID("11111111-1111-4111-8111-111111111111"),
+                1,
+            )
+        )
 
 
 def test_worker_processes_isolate_grading_from_maintenance_execution_slots() -> None:

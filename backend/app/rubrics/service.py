@@ -125,10 +125,12 @@ class AssignmentRubricService:
         repository: AssignmentRubricRepository,
         cipher: ApiKeyCipher | None = None,
         generator: RubricGenerator | None = None,
+        provider_calls_enabled: bool = True,
     ) -> None:
         self._repository = repository
         self._cipher = cipher
         self._generator = generator
+        self._provider_calls_enabled = provider_calls_enabled
 
     async def create_assignment(
         self,
@@ -207,6 +209,8 @@ class AssignmentRubricService:
         rubric_id: UUID,
         payload: RubricStructureRequest,
     ) -> RubricView:
+        if not self._provider_calls_enabled:
+            raise RubricProviderUnavailableError("模型调用已关闭：阶段 14 零费用模式")
         assignment = await self.get_assignment(owner_id, assignment_id)
         if assignment.status == "archived":
             raise AssignmentStateError("已归档作业不能生成 Rubric")

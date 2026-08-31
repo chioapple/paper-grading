@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     auth_invite_redirect_url: str = Field(validation_alias="AUTH_INVITE_REDIRECT_URL")
     frontend_origin: str = Field(validation_alias="FRONTEND_ORIGIN")
     provider_master_key: SecretStr = Field(validation_alias="PROVIDER_MASTER_KEY")
+    provider_calls_enabled: bool = Field(
+        default=False,
+        validation_alias="PROVIDER_CALLS_ENABLED",
+    )
     allow_official_provider_fake_ip: bool = Field(
         default=False,
         validation_alias="ALLOW_OFFICIAL_PROVIDER_FAKE_IP",
@@ -265,6 +269,10 @@ class WorkerSettings(BaseSettings):
         validation_alias="SUPABASE_SECRET_KEY",
     )
     provider_master_key: SecretStr = Field(validation_alias="PROVIDER_MASTER_KEY")
+    provider_calls_enabled: bool = Field(
+        default=False,
+        validation_alias="PROVIDER_CALLS_ENABLED",
+    )
     allow_official_provider_fake_ip: bool = Field(
         default=False,
         validation_alias="ALLOW_OFFICIAL_PROVIDER_FAKE_IP",
