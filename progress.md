@@ -434,13 +434,17 @@
   生产步骤未执行；付费流程前仍须补齐 E2E `--resume`/`--postcondition`、生产端同名记录
   防重和 Sites bypass 安全交接。
 - 用户要求简易流程同时保留可执行方法后，正式文档已为 6 个节点补齐终端 A/B/C/D、
-  Supabase SQL Editor/Dashboard、Sites、UptimeRobot、Chrome 的逐步操作；29 个 zsh 块和
-  10 个 Python heredoc 语法通过，聚焦回归 31 通过、失败 0。部署脚本已把 Heartbeat URL
+  Supabase SQL Editor/Dashboard、Sites、UptimeRobot、Chrome 的逐步操作；30 个 zsh 块和
+  10 个 Python heredoc 语法通过，聚焦回归 32 通过、失败 0。部署脚本已把 Heartbeat URL
   改为隐藏输入，本地预部署门禁通过；因此需生成新候选并取得 CI 8/8。生产和付费操作仍未执行。
 - 详细指南最终复查完成：迁移前要求任何 Celery Worker 都不存在；Sites 先记录原版本且只从封存
   release 构建；强退、登录、回滚或 Sites 任一验证失败都有明确停机/恢复路径；Funnel/Sites origin
   必须为无尾斜杠 HTTPS，UptimeRobot 固定 1 分钟间隔、2 分钟 grace 并验证联系人。最终本地门禁
-  通过，聚焦测试 31 通过、失败 0，29 个 zsh 块和 10 个 Python heredoc 语法全部通过。
+  通过，聚焦测试 32 通过、失败 0，30 个 zsh 块和 10 个 Python heredoc 语法全部通过。
 - 新候选 `27c67ac` 的 CI 前 7 项通过，第 8 项源码密钥扫描复现为两个已知完整 Git SHA 在测试及
   四个验收命令变量中的 6 处高熵误判，不是真实凭据。已仅对这 6 行添加精确 allowlist 注释，
   空基线和负向门禁保持不变；等待新提交 CI。
+- 节点 2.1 真实失败复现为旧脚本预建的 0 字节 Tailscale 状态文件：不存在文件会等待登录，空文件
+  则稳定返回 state store unhealthy。三个启动入口已停止 `touch` 状态文件，新增缺失/空/有效状态
+  回归；验收流程仅把正式空文件移动到可恢复备份，不删除有效身份。`d99dd5f` 虽已取得 CI 8/8，
+  但不含该修复，现降为历史候选；等待新的 Tailscale 修复提交 CI。

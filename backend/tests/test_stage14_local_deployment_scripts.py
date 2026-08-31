@@ -91,6 +91,49 @@ def test_stage14_predeployment_gate_does_not_overwrite_zsh_path() -> None:
 
 
 @MACOS_ONLY
+def test_tailscale_state_preparation_never_creates_an_empty_store(tmp_path: Path) -> None:
+    common = script_path("stage14-runtime-common.sh")
+
+    def prepare(runtime: Path) -> subprocess.CompletedProcess[str]:
+        env = isolated_env() | {"STAGE14_RUNTIME_ROOT": str(runtime)}
+        return subprocess.run(
+            ["/bin/zsh", "-c", f'source "{common}"; stage14_prepare_tailscale_state'],
+            cwd=PROJECT_ROOT,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    missing_runtime = tmp_path / "missing"
+    missing_dir = missing_runtime / "shared" / "tailscale"
+    missing_dir.mkdir(parents=True)
+    missing_state = missing_dir / "tailscaled.state"
+    completed = prepare(missing_runtime)
+    assert completed.returncode == 0, completed.stderr
+    assert not missing_state.exists()
+
+    empty_runtime = tmp_path / "empty"
+    empty_dir = empty_runtime / "shared" / "tailscale"
+    empty_dir.mkdir(parents=True)
+    empty_state = empty_dir / "tailscaled.state"
+    empty_state.touch()
+    completed = prepare(empty_runtime)
+    assert completed.returncode != 0
+    assert "stage14_tailscale_state_empty=true" in completed.stderr
+
+    valid_runtime = tmp_path / "valid"
+    valid_dir = valid_runtime / "shared" / "tailscale"
+    valid_dir.mkdir(parents=True)
+    valid_state = valid_dir / "tailscaled.state"
+    valid_state.write_text("{}", encoding="utf-8")
+    valid_state.chmod(0o644)
+    completed = prepare(valid_runtime)
+    assert completed.returncode == 0, completed.stderr
+    assert stat.S_IMODE(valid_state.stat().st_mode) == 0o600
+
+
+@MACOS_ONLY
 def test_switch_release_replaces_current_symlink_instead_of_writing_through_it(
     tmp_path: Path,
 ) -> None:

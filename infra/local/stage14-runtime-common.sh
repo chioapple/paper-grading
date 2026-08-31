@@ -63,6 +63,21 @@ stage14_tailscale_pidfile() {
   print -r -- "$(stage14_tailscale_dir)/tailscaled.pid"
 }
 
+stage14_prepare_tailscale_state() {
+  local state_file
+  state_file="$(stage14_tailscale_state)"
+  if [[ ! -e "$state_file" && ! -L "$state_file" ]]; then
+    return 0
+  fi
+  stage14_require_regular_file "$state_file"
+  test "$(/usr/bin/stat -f '%u' "$state_file")" = "$(/usr/bin/id -u)"
+  if [[ ! -s "$state_file" ]]; then
+    print -u2 "stage14_tailscale_state_empty=true"
+    return 1
+  fi
+  /bin/chmod 600 "$state_file"
+}
+
 stage14_assert_full_sha() {
   local sha=$1
   print -rn -- "$sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'

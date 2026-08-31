@@ -14,11 +14,12 @@
 | 项目 | 结果 | 是否还要重跑 |
 |---|---|---|
 | 本地预部署门禁 | 2026-08-30：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
-| 阶段 14 聚焦后端测试 | 31 通过、0 失败 | 相关代码变化后重跑 |
+| 阶段 14 聚焦后端测试 | 32 通过、0 失败 | 相关代码变化后重跑 |
 | Sites 构建与路由测试 | 2 通过、0 失败 | 前端或 Sites 配置变化后重跑 |
 | 历史候选 SHA CI | `71e377c251958fdd943a5f982bd9db4741a98db2`：8/8 通过，但不含最新部署脚本修复 | 不得作为最终候选 |
 | 失败候选 SHA CI | `27c67ac`：前 7 项通过，第 8 项 Git SHA 高熵误判；已在本地修复 | 不得使用或 rerun |
-| 修复候选 SHA CI | 尚未生成提交 | 提交后必须 8/8 通过 |
+| 上一绿色候选 SHA CI | `d99dd5f`：8/8 通过，但仍会预建空 Tailscale 状态 | 不得作为最终候选 |
+| Tailscale 修复候选 CI | 尚未生成提交 | 提交后必须 8/8 通过 |
 | 回滚 SHA CI | `7302f1e5a16fd3b113149098a94238bbfe20acdb`：8/8 通过 | 不需要 |
 | PostgreSQL、Auth、Storage、Redis、Worker、供应商、100 篇结构证据 | 已完成 | 禁止在生产重复做破坏性测试或 100 次模型调用 |
 | 生产部署、真实单篇业务流、告警、回滚 | 未执行 | 按下列节点执行 |
@@ -69,16 +70,16 @@ print "stage14_local_candidate_gate=true"
 | 检查 | 通过 | 失败 |
 |---|---:|---:|
 | 本地预部署门禁 | 1 | 0 |
-| 阶段 14 聚焦后端测试 | 31 | 0 |
+| 阶段 14 聚焦后端测试 | 32 | 0 |
 | Sites 构建与路由测试 | 2 | 0 |
 | 历史候选 SHA GitHub CI | 8 | 0 |
 | 回滚 SHA GitHub CI | 8 | 0 |
 
-历史候选 CI 和回滚 CI 已通过，但不包含最新安全修复。`27c67ac` 的前 7 项通过，第 8 项因两个已知 Git SHA 被高熵扫描误判而失败；该误判已在本地逐行修正，但旧提交内容不可改变，不要 rerun。修复提交和新 CI 完成前，节点 1 仍为未通过。
+`d99dd5f` 已精确取得 8/8 CI，但节点 2.1 真实运行发现它仍会预建 0 字节 Tailscale 状态文件。该问题已在本地修复；旧提交内容不可改变，不要 rerun。Tailscale 修复提交和新 CI 完成前，节点 1 重新判定为未通过。
 
 ### 1.2 生成并推送新候选
 
-先执行 `git status --short`，人工确认只包含本轮 10 个文件：`CONTEXT.md`、两个阶段 14 测试文件、`docs/STAGE14_ACCEPTANCE.md`、`findings.md`、两个 `infra/local` 脚本、`lessons.md`、`progress.md`、`task_plan.md`。若出现其他文件，停止，不要提交。
+先执行 `git status --short`，人工确认只包含本轮 10 个文件：`CONTEXT.md`、`backend/tests/test_stage14_local_deployment_scripts.py`、`docs/STAGE14_ACCEPTANCE.md`、四个 Tailscale/LaunchAgent 脚本、`lessons.md`、`progress.md`、`task_plan.md`。若出现其他文件，停止，不要提交。
 
 用户确认允许提交和推送后，在终端 A执行：
 
@@ -89,20 +90,20 @@ cd "/Users/a1-6/Documents/Paper Grading"
 test "$(git branch --show-current)" = "main"
 git add -- \
   CONTEXT.md \
-  backend/tests/test_stage14_delivery_contract.py \
   backend/tests/test_stage14_local_deployment_scripts.py \
   docs/STAGE14_ACCEPTANCE.md \
-  findings.md \
-  infra/local/update-production-env.sh \
-  infra/local/verify-runtime.sh \
+  infra/local/install-launch-agents.sh \
+  infra/local/run-tailscale.sh \
+  infra/local/stage14-runtime-common.sh \
+  infra/local/tailscale-login.sh \
   lessons.md \
   progress.md \
   task_plan.md
 git diff --cached --check
-git commit -m "docs: add executable stage 14 acceptance guide"
-git push origin HEAD:main
+git commit -m "fix: avoid empty tailscale state store"
+git -c http.version=HTTP/1.1 push origin HEAD:main
 candidate_sha=$(git rev-parse HEAD)
-remote_sha=$(git ls-remote origin refs/heads/main | /usr/bin/cut -f1)
+remote_sha=$(git -c http.version=HTTP/1.1 ls-remote origin refs/heads/main | /usr/bin/cut -f1)
 test "$candidate_sha" = "$remote_sha"
 print "candidate_sha=$candidate_sha"
 print "stage14_candidate_pushed=true"
@@ -150,6 +151,32 @@ print "stage14_candidate_pushed=true"
 先关闭会制造 fake-IP 的 VPN 系统代理/虚拟网卡模式。密码、Passkey 和验证码只由用户在 Chrome 输入。
 
 执行位置：终端 B。
+
+如果曾出现 `cannot start backend when state store is unhealthy`，先执行下面的恢复块。它只接受由旧脚本误建的 0 字节普通文件，并移动到同目录备份；不会删除有效 Tailscale 身份。其他状态一律停止。
+
+```zsh
+(
+set -euo pipefail
+cd "/Users/a1-6/Documents/Paper Grading"
+runtime_root="$HOME/Library/Application Support/Paper Grading"
+state_file="$runtime_root/shared/tailscale/tailscaled.state"
+./infra/local/tailscale-login.sh stop
+test -f "$state_file"
+test ! -L "$state_file"
+test "$(/usr/bin/stat -f '%u' "$state_file")" = "$(/usr/bin/id -u)"
+test "$(/usr/bin/stat -f '%z' "$state_file")" = "0"
+backup_file="$state_file.empty.$(/bin/date -u '+%Y%m%dT%H%M%SZ')"
+test ! -e "$backup_file"
+/bin/mv -- "$state_file" "$backup_file"
+/bin/chmod 600 "$backup_file"
+test ! -e "$state_file"
+print "stage14_empty_tailscale_state_quarantined=true"
+)
+```
+
+只有打印 `stage14_empty_tailscale_state_quarantined=true` 才继续。备份文件保留到阶段 14 完成，不要删除。
+
+随后执行登录块：
 
 ```zsh
 (

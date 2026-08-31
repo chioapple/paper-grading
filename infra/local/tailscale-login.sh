@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/stage14-runtime-common.sh"
 if [[ "${1:-}" = "--self-check" ]]; then
   test -x "${STAGE14_TAILSCALE_CLIENT_BIN:-/opt/homebrew/bin/tailscale}"
   test -x "${STAGE14_TAILSCALE_DAEMON_BIN:-/opt/homebrew/opt/tailscale/bin/tailscaled}"
+  typeset -f stage14_prepare_tailscale_state >/dev/null
   stage14_self_check_ok
 fi
 
@@ -18,8 +19,6 @@ client="${STAGE14_TAILSCALE_CLIENT_BIN:-/opt/homebrew/bin/tailscale}"
 daemon="${STAGE14_TAILSCALE_DAEMON_BIN:-/opt/homebrew/opt/tailscale/bin/tailscaled}"
 
 stage14_install_secure_dir "$(stage14_tailscale_dir)" 700
-touch "$state_file"
-chmod 600 "$state_file"
 
 cleanup_stale() {
   if [[ -f "$pidfile" ]]; then
@@ -35,6 +34,7 @@ cleanup_stale() {
 
 start_daemon() {
   cleanup_stale
+  stage14_prepare_tailscale_state
   if [[ -f "$pidfile" ]]; then
     pid=$(tr -d '[:space:]' <"$pidfile")
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ -S "$socket" ]]; then

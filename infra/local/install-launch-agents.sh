@@ -8,6 +8,7 @@ if [[ "${1:-}" = "--self-check" ]]; then
   command -v launchctl >/dev/null
   command -v plutil >/dev/null
   typeset -f stage14_install_secure_dir >/dev/null
+  typeset -f stage14_prepare_tailscale_state >/dev/null
   stage14_self_check_ok
 fi
 
@@ -33,8 +34,8 @@ stage14_install_secure_dir "$LAUNCH_AGENTS_DIR" 700
 stage14_install_secure_dir "$(stage14_tailscale_dir)" 700
 stage14_require_regular_file "$ENV_DIR/production.env"
 stage14_require_regular_file "$ENV_DIR/grading-worker.env"
-touch "$(stage14_tailscale_state)"
-chmod 600 "$(stage14_tailscale_state)" "$ENV_DIR/production.env" "$ENV_DIR/grading-worker.env"
+stage14_prepare_tailscale_state
+chmod 600 "$ENV_DIR/production.env" "$ENV_DIR/grading-worker.env"
 for component in api grading export keep-awake tailscale watchdog; do
   touch "$LOG_DIR/$component.stdout.log" "$LOG_DIR/$component.stderr.log"
   chmod 600 "$LOG_DIR/$component.stdout.log" "$LOG_DIR/$component.stderr.log"

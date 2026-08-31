@@ -10,8 +10,7 @@ PIDFILE="$(stage14_tailscale_pidfile)"
 DAEMON="${STAGE14_TAILSCALE_DAEMON_BIN:-/opt/homebrew/opt/tailscale/bin/tailscaled}"
 
 stage14_install_secure_dir "$(stage14_tailscale_dir)" 700
-touch "$STATE_FILE"
-chmod 600 "$STATE_FILE"
+stage14_prepare_tailscale_state
 print -r -- "$$" >"$PIDFILE"
 chmod 600 "$PIDFILE"
 

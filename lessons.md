@@ -64,3 +64,6 @@
   实际 release。Sites 的部署、状态、访问范围、页面和 API 任一失败，都属于同一恢复边界。
 - 完整 Git SHA 出现在 Python 字符串或 shell 变量中可能被高熵规则误判；只能在人工确认其确为
   Git 对象后对具体行添加 allowlist 注释，并重跑 CI 原始扫描。不得放宽插件、写入基线或隐藏真实候选。
+- `tailscaled --state=<path>` 首次启动必须让状态路径不存在；预先 `touch` 出 0 字节文件会使
+  `tailscale up` 返回 state store unhealthy。启动脚本应拒绝空状态并保留恢复副本，不能把空文件
+  当成安全初始化，也不能自动覆盖非空身份状态。
