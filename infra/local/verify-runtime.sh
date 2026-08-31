@@ -43,9 +43,18 @@ listen_addresses=$(
 test "$listen_addresses" = "127.0.0.1:8000"
 
 worker_status="$("$current_root/.venv/bin/celery" -b "$REDIS_URL" inspect ping --json --timeout 10)"
-for worker in grading maintenance exports; do
-  print -rn -- "$worker_status" | /usr/bin/grep -Fq "${worker}@"
-done
+print -rn -- "$worker_status" | "$current_root/.venv/bin/python" -c '
+import json
+import sys
+
+payload = json.load(sys.stdin)
+names = list(payload)
+if any("@" not in name for name in names):
+    raise SystemExit("stage14_worker_name_invalid")
+prefixes = sorted(name.split("@", 1)[0] for name in names)
+if prefixes != ["exports", "grading", "maintenance"]:
+    raise SystemExit("stage14_worker_set_invalid")
+'
 
 for queue in paper_grading.grading paper_grading.maintenance paper_grading.exports; do
   /opt/homebrew/bin/redis-cli -u "$REDIS_URL" LLEN "$queue" >/dev/null

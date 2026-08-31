@@ -426,3 +426,18 @@
   复现并格式化。该失败 SHA 同样不得作为第 3.3 节候选。
 - 修复并完整格式化后的提交 `7302f1e5a16fd3b113149098a94238bbfe20acdb` 已由 GitHub
   CI 确认 8 项通过、失败 0，作为第 3.3 节回滚 SHA；下一提交只记录这项验收结果。
+- 2026-08-30 将阶段 14 正式验收从 2,468 行、12 个大步骤精简为 6 个关键节点；完成
+  节点 1 的本地部分。本地预部署门禁通过，阶段 14 聚焦后端 31 项、Sites 构建与路由 2 项通过，
+  失败 0；历史候选 `71e377c251958fdd943a5f982bd9db4741a98db2` 与回滚
+  `7302f1e5a16fd3b113149098a94238bbfe20acdb` 的 GitHub CI 均只读复核为 8/8，前者随后因
+  部署脚本继续修正而不再是最终候选。
+  生产步骤未执行；付费流程前仍须补齐 E2E `--resume`/`--postcondition`、生产端同名记录
+  防重和 Sites bypass 安全交接。
+- 用户要求简易流程同时保留可执行方法后，正式文档已为 6 个节点补齐终端 A/B/C/D、
+  Supabase SQL Editor/Dashboard、Sites、UptimeRobot、Chrome 的逐步操作；29 个 zsh 块和
+  10 个 Python heredoc 语法通过，聚焦回归 31 通过、失败 0。部署脚本已把 Heartbeat URL
+  改为隐藏输入，本地预部署门禁通过；因此需生成新候选并取得 CI 8/8。生产和付费操作仍未执行。
+- 详细指南最终复查完成：迁移前要求任何 Celery Worker 都不存在；Sites 先记录原版本且只从封存
+  release 构建；强退、登录、回滚或 Sites 任一验证失败都有明确停机/恢复路径；Funnel/Sites origin
+  必须为无尾斜杠 HTTPS，UptimeRobot 固定 1 分钟间隔、2 分钟 grace 并验证联系人。最终本地门禁
+  通过，聚焦测试 31 通过、失败 0，29 个 zsh 块和 10 个 Python heredoc 语法全部通过。

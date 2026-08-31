@@ -83,12 +83,11 @@ def test_stage14_predeployment_gate_passes_after_all_script_contracts_exist() ->
     assert completed.stdout.strip() == "stage14_predeployment_gate=true"
 
 
-def test_stage14_acceptance_wrapper_does_not_overwrite_zsh_path() -> None:
-    workflow = (PROJECT_ROOT / "docs/STAGE14_ACCEPTANCE.md").read_text(encoding="utf-8")
-    section = workflow.split("### 3.2 运行代码门禁", 1)[1].split("### 3.3", 1)[0]
+def test_stage14_predeployment_gate_does_not_overwrite_zsh_path() -> None:
+    gate = script_path("stage14-predeployment-gate.sh").read_text(encoding="utf-8")
 
-    assert 'for script_path in "${required_executables[@]}"' in section
-    assert 'for path in "${required_executables[@]}"' not in section
+    assert 'for name in "${required_scripts[@]}"' in gate
+    assert 'for path in "${required_scripts[@]}"' not in gate
 
 
 @MACOS_ONLY

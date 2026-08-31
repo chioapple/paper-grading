@@ -1,46 +1,21 @@
 # CONTEXT
 
-- 当前正在做什么：阶段 14 第 6.2 节及之前已完成；个人非商业部署已经从 Render
-  切换为 Sites 前端、常开 Mac 后端、本机 Redis、Tailscale Funnel、`launchd` 和
-  UptimeRobot。Sites 项目已创建，前端 Sites 构建、SPA 深层路径和安全响应头回归通过
-  2、失败 0；发布候选 `eb2f360` 的 GitHub CI 通过 8、失败 0，本轮后端 491、前端
-  70、本地浏览器 2 和部署契约 14 项均通过、失败 0。`eb2f360` 只作既有基线，不是修复
-  部署门禁后的最终发布 SHA。Tailscale CLI 和 `0600` state 已准备，但 daemon 当前未
-  运行且 socket 已残留；生产环境文件和 LaunchAgent 均不存在。Sites 项目保持 owner-only，
-  当前保存版本为 0、无正式部署 URL。阶段 14 保持进行中。
-  `docs/STAGE14_ACCEPTANCE.md` 已在 2026-08-13 重写为可执行工作流，逐块标明终端、
-  Supabase SQL Editor、Dashboard、Sites 和授权边界。生产前硬门禁扩展为原子
-  release/current + shared 状态、Tailscale 生命周期、三个 Worker 真实恢复、watchdog
-  凭据边界、私有 Sites 同源 bypass 安全交接、E2E 防重跑/恢复和总超时，以及 Storage
-  bucket 50MiB/论文入口 20MiB/导出 50MiB 的统一契约、首次 LaunchAgent 半安装回滚和
-  网络异常时 API/Worker 全部 fail closed；门禁未通过时
-  连生产 `0019` 迁移也禁止执行，不得用当前工作树切换、公开 Sites 或口头判断代替。当前
-  文档可直接执行到第 3.2 节；完整生产流程仍须由新 SHA 的 CI 验证。2026-08-18 已在当前
-  工作树补齐第 3.2 节所需的本地门禁脚本与 release/env/shared 路径切换：
-  `stage14-predeployment-gate.sh`、`prepare-release.sh`、`validate-release.sh`、
-  `switch-release.sh`、`update-production-env.sh`、`tailscale-login.sh`、
-  `stage14-funnel.sh`、`run-stage14-e2e.sh` 已入库，`install-launch-agents.sh`、
-  `run-component.sh`、`run-tailscale.sh`、`verify-runtime.sh`、`watchdog.sh` 已改为走
-  `current`/`shared` 边界。用户给出的第 3.2 节命令现可本地返回
-  `stage14_predeployment_gate=true`；聚焦测试
-  `backend/tests/test_stage14_local_deployment_scripts.py`、
-  `backend/tests/test_stage14_delivery_contract.py` 和
-  `backend/tests/test_supabase_storage.py` 本轮通过 30、失败 0，Sites 专项通过 2、失败 0；
-  普通后端通过 499、失败 0，前端普通门禁通过 73、失败 0。macOS 运行契约只在目标机
-  执行，Ubuntu CI 只收集静态契约，避免依赖 Tailscale、`launchctl` 和 Homebrew。
-  第一个完整部署门禁提交 `b4bce79d2678e8b5587e3d0b1b55c98fc249ea44` 的 CI 第 4 项
-  暴露既有 XLSX 非确定性缺陷，因此不能作为回滚候选：`openpyxl` 保存时会用当前时间
-  覆盖固定的 `modified`，两次生成跨秒后字节和哈希不同。当前修复在 ZIP 规范化阶段把
-  `docProps/core.xml` 的修改时间恢复为冻结快照时间，并用强制跨秒时钟回归锁定；CI 同款
-  本地集成契约通过 144、失败 0。第 3.3 节已改为使用公开仓库的 GitHub Actions 官方
-  只读 API，不再依赖本机 `gh` 登录；已用远端既有全绿 SHA 验证能够严格确认 8 个任务
-  全部成功。首个 XLSX 修复提交 `3e469293b7b9677ea65f6a39dac8f0494bd92d9b` 又由 CI
-  第 1 项发现阶段 14 契约测试未覆盖在此前的局部 Ruff 格式检查中，因此也不能作为回滚
-  候选；该文件已按 CI 的完整目录范围格式化。修复后的提交
-  `7302f1e5a16fd3b113149098a94238bbfe20acdb` 已由 GitHub CI 确认 8 项通过、失败 0，
-  可作为第 3.3 节回滚 SHA。真实生产 Tailscale、Sites、
-  Supabase 写入和模型调用仍未执行；真实 E2E 的 `--resume`/`--postcondition` 当前仍会
-  fail closed，付费流程前必须补齐。
+- 当前正在做什么：阶段 14 保持进行中。2026-08-30 已把
+  `docs/STAGE14_ACCEPTANCE.md` 从 12 个大步骤精简为 6 个关键节点：代码与版本、私有发布、
+  目标环境与前向迁移、无写入冒烟、一次真实单篇业务流、告警与双端回滚收口。已完成本地
+  预部署门禁，阶段 14 聚焦后端测试通过 31、失败 0，Sites 构建与路由通过 2、失败 0；
+  候选 `71e377c251958fdd943a5f982bd9db4741a98db2` 与回滚
+  `7302f1e5a16fd3b113149098a94238bbfe20acdb` 均由 GitHub Actions 官方只读 API 确认
+  8/8 通过；前者现仅为历史候选，后者仍是回滚 SHA。节点 1 的本地部分已完成，但整体须等
+  本轮 10 个文件提交并取得新候选 CI 8/8。真实生产 Tailscale、Sites、Supabase 写入、LaunchAgent、
+  模型调用、告警和回滚仍未执行；开始付费节点前必须先实现并测试
+  `run-stage14-e2e.sh --resume`/`--postcondition`、生产端同名记录防重和 Sites bypass
+  安全交接。下一步是补齐这个“付费前防重与恢复门禁”，然后在用户
+  明确授权外部状态变化后从节点 2 顺序执行。简易验收文档现已为终端 A/B/C/D、Supabase、
+  Sites、UptimeRobot 和 Chrome 补齐逐步操作、29 个 zsh 代码块、SQL、通过标记和失败停止
+  条件；zsh 语法和 10 个内嵌 Python 块均已检查。环境脚本已把 Heartbeat URL 改为隐藏输入，
+  因此历史候选 `71e377c` 不再是最终候选；当前本地门禁通过、聚焦测试 31/0，等待本轮改动
+  提交后取得新候选 CI 8/8。自动清理、备份、恢复演练和生产配额继续关闭。
 - 最终验收信号：用户于 2026-07-26 明确确认 `docs/STAGE12_ACCEPTANCE.md` 全部步骤执行通过，阶段 12 已完成。
 - 阶段 12 最终迁移版本：`20260722_0017`；用户确认真实项目前向迁移和验收均已通过，真实项目不得为验收回退。
 - 阶段 12 本地代码：`0017` 原子冻结模型参数、批次和 `export_items`；导出进程只接受专用最小角色的 `EXPORT_DATABASE_URL`。同一快照生成完全相同的文件名、XLSX 字节和 SHA-256，600 秒租约长于 Worker 硬时限。完成竞争失败后，只有当前令牌能先原子转为 failed 才可删除本次新对象，失租旧 Worker 不删除；连续软超时或三次 Worker 丢失会持久化为明确失败，不会永久卡在 running。
@@ -82,3 +57,9 @@
 - 阶段 14 第 6.2 节最终决定：不执行新的 100 次真实模型调用。真实输入解析 100 通过、失败 0、重复哈希 0；结合阶段 10 的 100 篇批次完整性、当前 100 篇唯一投递自动化、阶段 12 的 100 篇 Excel 映射、当前头权限/配额、真实 Worker 和供应商冒烟，组合证据已足够。以后如需验证耗时、并发、失败率或费用，先定义 SLA 后作为独立性能测试。
 - 阶段 14 发布候选自检修复真实 E2E 重复计费、API 缺少安全响应头、部署后队列/签名 URL/告警/回滚恢复证据不足和密钥扫描宽泛基线五类缺口。真实 E2E 现在只创建一个批次，手机端复用同一结果；密钥基线为空，只对逐行人工确认的测试假值和界面文案显式放行，负向控制仍会失败。
 - 第 5 节最终自检：普通后端 489 项、目标回归 23 项和密钥扫描修复回归 1 项通过，失败 0；严格 mypy 170 个源文件、Ruff、格式、仓库密钥扫描和差异检查通过。扫描修复只为两条固定假数据库 URL 增加显式测试白名单注释，没有修改基线或忽略真实候选。
+- 2026-08-30 阶段 14 正式验收已压缩为 6 个节点，并补齐终端 A/B/C/D、Supabase、Sites、
+  UptimeRobot 和 Chrome 的逐步操作。最终独立复查补齐所有 Worker 离线、Sites 原版本恢复、
+  封存目录构建、失败停机、双端恢复验证、无尾斜杠 HTTPS origin 和 1 分钟 Heartbeat/2 分钟
+  grace 要求。环境脚本会隐藏 Heartbeat URL并拒绝错误 origin；本地门禁、31 项聚焦测试、
+  29 个 zsh 块和 10 个 Python heredoc 均通过，失败 0。旧候选不含这些修复，必须生成新候选并
+  取得 CI 8/8；生产和付费操作未执行。

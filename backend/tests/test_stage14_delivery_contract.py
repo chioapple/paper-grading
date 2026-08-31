@@ -173,22 +173,16 @@ def test_stage_fourteen_context_has_no_superseded_stage_five_blocker() -> None:
     assert "评分 Worker 丢失仍等待真实模型费用授权" not in context
 
 
-def test_stage_fourteen_ci_acceptance_uses_public_actions_api_without_gh_login() -> None:
+def test_stage_fourteen_ci_acceptance_records_two_exact_green_shas() -> None:
     acceptance = (PROJECT_ROOT / "docs/STAGE14_ACCEPTANCE.md").read_text(encoding="utf-8")
-    section = acceptance.split("### 3.3 提交、选择两个 SHA 并验证 GitHub CI", 1)[1].split(
-        "## 4. 第 1 步：首次私有 URL 引导", 1
-    )[0]
 
-    assert "api.github.com/repos/${repo}/actions/workflows/ci.yml/runs" in section
-    assert "api.github.com/repos/${repo}/actions/runs/${run_id}/jobs" in section
-    assert "runs.length !== 1" in section
-    assert "run.head_sha !== process.env.STAGE14_EXPECTED_SHA" in section
-    assert 'run.status !== "completed"' in section
-    assert 'run.conclusion !== "success"' in section
-    assert "payload.total_count !== 8" in section
-    assert 'job.conclusion !== "success"' in section
-    assert "gh repo view" not in section
-    assert "gh run" not in section
+    assert "71e377c251958fdd943a5f982bd9db4741a98db2" in acceptance
+    assert "7302f1e5a16fd3b113149098a94238bbfe20acdb" in acceptance
+    assert "候选 SHA CI" in acceptance
+    assert "回滚 SHA CI" in acceptance
+    assert acceptance.count("8/8 通过") >= 2
+    assert "gh repo view" not in acceptance
+    assert "gh run" not in acceptance
 
 
 def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
@@ -219,6 +213,7 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "stage14_local_runtime_verified=true" in runtime
     assert "stage14_state_dir" in runtime
     assert "funnel status --json" in runtime
+    assert 'prefixes != ["exports", "grading", "maintenance"]' in runtime
     assert "curl --config" in watchdog
     assert "heartbeat.uptimerobot.com" in watchdog
     assert "shared/env/production.env" in component_runner
@@ -232,6 +227,11 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "--env-dir" in env_updater
     assert "production.env" in env_updater
     assert "grading-worker.env" in env_updater
+    assert 'read -rs "uptimerobot_heartbeat_url?' in env_updater
+    assert '"$frontend_origin" != https://*' in env_updater
+    assert '"$vite_api_base_url" != https://*' in env_updater
+    assert '"$frontend_origin" = */' in env_updater
+    assert '"$vite_api_base_url" = */' in env_updater
     assert "serve get-config" in funnel
     assert "serve set-config" in funnel
     assert "funnel status --json" in funnel

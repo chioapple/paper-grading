@@ -74,7 +74,16 @@ read -r "supabase_storage_bucket?输入 SUPABASE_STORAGE_BUCKET："
 read -rs "provider_master_key?输入 PROVIDER_MASTER_KEY："; print
 read -r "frontend_origin?输入 FRONTEND_ORIGIN："
 read -r "vite_api_base_url?输入 VITE_API_BASE_URL："
-read -r "uptimerobot_heartbeat_url?输入 UPTIMEROBOT_HEARTBEAT_URL："
+read -rs "uptimerobot_heartbeat_url?输入 UPTIMEROBOT_HEARTBEAT_URL："; print
+
+if [[ "$frontend_origin" != https://* || "$frontend_origin" = */ ]]; then
+  print -u2 "FRONTEND_ORIGIN 必须以 https:// 开头且不带尾斜杠"
+  exit 1
+fi
+if [[ "$vite_api_base_url" != https://* || "$vite_api_base_url" = */ ]]; then
+  print -u2 "VITE_API_BASE_URL 必须以 https:// 开头且不带尾斜杠"
+  exit 1
+fi
 
 auth_invite_redirect_url="${frontend_origin%/}/auth/callback"
 

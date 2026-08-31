@@ -233,3 +233,19 @@
   收集文件、权限和静态边界；Tailscale、Homebrew、`launchctl`、真实 symlink 切换等执行
   契约只在目标 Mac 运行。否则 CI 会因平台不存在的系统工具失败，而不是发现业务回归。
 - `alembic current` 在非 head revision 只输出 revision ID，在 head 可能追加 `(head)`。用“revision 后必须有空格”匹配中间版本会在升级成功后假红；中间版本应整行精确匹配，最终版本只允许可选的 `(head)` 标记。
+- 阶段 14 最小充分验收只有六个节点：代码与版本、私有发布、目标环境与前向迁移、无写入
+  冒烟、一次真实单篇业务流、告警与双端回滚收口。历史 PostgreSQL/Auth/Storage/Worker/
+  供应商和 100 篇结构证据不应在生产重复执行。正式验收文件保留简单的六节点结构，同时
+  必须直接提供逐终端命令、网页位置、通过标准和失败停止条件；Runbook 只补充背景。
+- `run-stage14-e2e.sh --resume` 与 `--postcondition` 当前仍为 `not_implemented`；`--start`
+  只有本机一次性标记，尚未查询生产端同名记录；Sites bypass 也没有不经过聊天、文件或
+  命令参数的安全交接通道。这三项共同组成付费前防重与恢复门禁，未补齐时禁止运行
+  `--start`。
+- `switch-release.sh` 只原子切换 `current` 符号链接，不会重启已运行进程；Mac 回滚和恢复
+  候选必须执行 `bootout → switch → validate → bootstrap/kickstart → verify`，否则旧进程
+  继续健康会造成假回滚通过。
+- `UPTIMEROBOT_HEARTBEAT_URL` 是写入凭据，生产环境交互脚本必须隐藏输入；该脚本一旦改变，
+  既有全绿 SHA 也不能继续充当最终候选，必须从包含修复的新提交重新取得 CI 8/8。
+- 生产迁移前不能只按预期 Worker 名前缀判断停机，Celery inspect 返回任何节点都应停止；Sites 和
+  Mac 的回滚/恢复也必须验证实际运行版本，且把部署调用、状态轮询、访问范围、页面和 API 检查
+  视为同一失败边界。origin 统一拒绝尾斜杠，避免健康检查拼成双斜杠 URL。
