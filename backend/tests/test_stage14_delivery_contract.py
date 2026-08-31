@@ -176,8 +176,8 @@ def test_stage_fourteen_context_has_no_superseded_stage_five_blocker() -> None:
 def test_stage_fourteen_ci_acceptance_records_two_exact_green_shas() -> None:
     acceptance = (PROJECT_ROOT / "docs/STAGE14_ACCEPTANCE.md").read_text(encoding="utf-8")
 
-    assert "71e377c251958fdd943a5f982bd9db4741a98db2" in acceptance
-    assert "7302f1e5a16fd3b113149098a94238bbfe20acdb" in acceptance
+    assert "71e377c251958fdd943a5f982bd9db4741a98db2" in acceptance  # pragma: allowlist secret
+    assert "7302f1e5a16fd3b113149098a94238bbfe20acdb" in acceptance  # pragma: allowlist secret
     assert "候选 SHA CI" in acceptance
     assert "回滚 SHA CI" in acceptance
     assert acceptance.count("8/8 通过") >= 2

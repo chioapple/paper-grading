@@ -17,7 +17,8 @@
 | 阶段 14 聚焦后端测试 | 31 通过、0 失败 | 相关代码变化后重跑 |
 | Sites 构建与路由测试 | 2 通过、0 失败 | 前端或 Sites 配置变化后重跑 |
 | 历史候选 SHA CI | `71e377c251958fdd943a5f982bd9db4741a98db2`：8/8 通过，但不含最新部署脚本修复 | 不得作为最终候选 |
-| 新候选 SHA CI | 尚未生成提交 | 提交后必须 8/8 通过 |
+| 失败候选 SHA CI | `27c67ac`：前 7 项通过，第 8 项 Git SHA 高熵误判；已在本地修复 | 不得使用或 rerun |
+| 修复候选 SHA CI | 尚未生成提交 | 提交后必须 8/8 通过 |
 | 回滚 SHA CI | `7302f1e5a16fd3b113149098a94238bbfe20acdb`：8/8 通过 | 不需要 |
 | PostgreSQL、Auth、Storage、Redis、Worker、供应商、100 篇结构证据 | 已完成 | 禁止在生产重复做破坏性测试或 100 次模型调用 |
 | 生产部署、真实单篇业务流、告警、回滚 | 未执行 | 按下列节点执行 |
@@ -73,7 +74,7 @@ print "stage14_local_candidate_gate=true"
 | 历史候选 SHA GitHub CI | 8 | 0 |
 | 回滚 SHA GitHub CI | 8 | 0 |
 
-历史候选 CI 和回滚 CI 已通过，但本轮已修改部署与运行验证脚本，历史候选不包含这些安全修复。当前只能完成本地部分；新候选提交和 CI 完成前，节点 1 仍为未通过。
+历史候选 CI 和回滚 CI 已通过，但不包含最新安全修复。`27c67ac` 的前 7 项通过，第 8 项因两个已知 Git SHA 被高熵扫描误判而失败；该误判已在本地逐行修正，但旧提交内容不可改变，不要 rerun。修复提交和新 CI 完成前，节点 1 仍为未通过。
 
 ### 1.2 生成并推送新候选
 
@@ -211,7 +212,7 @@ cd "/Users/a1-6/Documents/Paper Grading"
 runtime_root="$HOME/Library/Application Support/Paper Grading"
 read -r "candidate_sha?输入已取得 CI 8/8 的新候选完整 SHA："
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb"
+rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
 read -r "VITE_API_BASE_URL?输入刚记录的 Funnel HTTPS origin："
 read -r "VITE_SUPABASE_URL?输入生产 Supabase 项目 URL："
 read -rs "VITE_SUPABASE_PUBLISHABLE_KEY?输入 Supabase publishable key："; print
@@ -534,7 +535,7 @@ env_dir="$runtime_root/shared/env"
 cd "$current"
 read -r "candidate_sha?输入已取得 CI 8/8 的新候选完整 SHA："
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb"
+rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
 for release_sha in "$candidate_sha" "$rollback_sha"; do
   "$runtime_root/releases/$release_sha/infra/local/validate-release.sh" \
     "$release_sha" --env-dir "$env_dir"
@@ -1134,7 +1135,7 @@ runtime_root="$HOME/Library/Application Support/Paper Grading"
 agents="$HOME/Library/LaunchAgents"
 read -r "candidate_sha?输入已部署候选的完整 SHA："
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb"
+rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
 manager="$runtime_root/shared/bin/switch-release.sh"
 env_dir="$runtime_root/shared/env"
 source "$env_dir/production.env"
@@ -1263,7 +1264,7 @@ runtime_root="$HOME/Library/Application Support/Paper Grading"
 agents="$HOME/Library/LaunchAgents"
 read -r "candidate_sha?输入已部署候选的完整 SHA："
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb"
+rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
 manager="$runtime_root/shared/bin/switch-release.sh"
 env_dir="$runtime_root/shared/env"
 source "$env_dir/production.env"
