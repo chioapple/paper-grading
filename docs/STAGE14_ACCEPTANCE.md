@@ -356,6 +356,8 @@ read -rs "VITE_SUPABASE_PUBLISHABLE_KEY?输入 Supabase publishable key："; pri
 export VITE_API_BASE_URL VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY
 trap 'unset VITE_SUPABASE_PUBLISHABLE_KEY' EXIT
 
+./infra/local/verify-supabase-browser-config.sh
+
 for release_sha in "$rollback_sha" "$candidate_sha"; do
   ./infra/local/prepare-release.sh "$release_sha"
   ./infra/local/validate-release.sh "$release_sha"
@@ -387,7 +389,9 @@ print "stage14_two_local_releases_prepared=true"
 )
 ```
 
-预期：每个 release 分别打印 `stage14_release_prepared=true` 和 `stage14_release_validated=true`，最后打印 `stage14_two_local_releases_prepared=true`。
+预期：先打印 `stage14_supabase_browser_config_verified=true`；每个 release 还会再次验证同一公开浏览器配置，随后分别打印 `stage14_release_prepared=true` 和 `stage14_release_validated=true`，最后打印 `stage14_two_local_releases_prepared=true`。
+
+若打印 `stage14_supabase_publishable_key_invalid=true`，立即停止。到 Supabase Dashboard 的项目 API Keys 页面重新复制该项目的 **Publishable key**；不得输入 Secret key、JWT signing secret、Key 的哈希值或镜像摘要。若已有同一 SHA 的封存 release 随后打印 `stage14_release_environment_mismatch=true`，说明该封存包由另一组前端环境构建，不能静默复用；先保留该失败证据，再重新封存该 SHA。
 
 ### 2.4 保存并私有部署 Sites
 

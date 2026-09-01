@@ -48,6 +48,7 @@ test -n "${VITE_API_BASE_URL:-}"
 test -n "${VITE_SUPABASE_URL:-}"
 test -n "${VITE_SUPABASE_PUBLISHABLE_KEY:-}"
 test -d "$project_root/.venv"
+"$SCRIPT_DIR/verify-supabase-browser-config.sh"
 
 stage14_install_secure_dir "$runtime_root" 700
 stage14_install_secure_dir "$releases_root" 700
@@ -61,6 +62,24 @@ stage14_install_secure_dir "$(stage14_tailscale_dir)" 700
 if [[ -e "$target_release" ]]; then
   test -f "$sealed_flag"
   test -f "$manifest_path"
+  if ! STAGE14_MANIFEST="$manifest_path" \
+    "$project_root/.venv/bin/python" - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+
+manifest = json.loads(Path(os.environ["STAGE14_MANIFEST"]).read_text(encoding="utf-8"))
+assert manifest["vite_api_base_url"] == os.environ["VITE_API_BASE_URL"]
+assert manifest["vite_supabase_url"] == os.environ["VITE_SUPABASE_URL"]
+assert manifest["vite_supabase_publishable_key_sha256"] == hashlib.sha256(
+    os.environ["VITE_SUPABASE_PUBLISHABLE_KEY"].encode("utf-8")
+).hexdigest()
+PY
+  then
+    print -u2 "stage14_release_environment_mismatch=true"
+    exit 1
+  fi
 else
   cleanup() {
     if [[ -d "$target_release" && ! -e "$sealed_flag" ]]; then

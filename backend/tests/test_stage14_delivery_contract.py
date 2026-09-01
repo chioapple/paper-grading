@@ -282,6 +282,7 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
 def test_stage14_predeployment_gate_contract_scripts_exist_and_pass() -> None:
     required_executables = [
         "infra/local/stage14-predeployment-gate.sh",
+        "infra/local/verify-supabase-browser-config.sh",
         "infra/local/prepare-release.sh",
         "infra/local/validate-release.sh",
         "infra/local/switch-release.sh",

@@ -86,3 +86,9 @@
 - 部署适配发生变化时，候选修好不等于回滚仍可用。节点 2.4 保存版本前必须让两个封存 Worker 都在
   外部 `ASSETS` 始终返回 404 的同一门禁下返回页面 200；旧回滚失败时应升级回滚基线并重新取得
   候选 CI，不能先部署候选再把已知 404 的版本保留为回滚。
+- Vite 构建成功、manifest 哈希一致只证明输入值被原样打包，不能证明它是目标 Supabase 项目接受的
+  publishable key。发布前必须用该 key 调用同项目 `/auth/v1/settings`，非 2xx 立即停止。
+- 登录和密码重置同时失败时，先查 Auth 请求状态，不能从通用界面文案反推账号错误；`401 Invalid
+  API key` 发生在密码校验之前，也不会发送重置邮件。
+- 同一 Git SHA 的封存 release 仍可能因 Vite 构建环境不同而产生不同前端产物。目录存在时必须比较
+  API origin、Supabase URL 和 publishable key 哈希，不能直接把旧包报告为已准备。

@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/stage14-runtime-common.sh"
 project_root=$(stage14_project_root)
 required_scripts=(
   stage14-predeployment-gate.sh
+  verify-supabase-browser-config.sh
   prepare-release.sh
   validate-release.sh
   switch-release.sh

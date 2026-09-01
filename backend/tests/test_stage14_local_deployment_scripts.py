@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import stat
 import subprocess
 import sys
@@ -16,6 +18,7 @@ MACOS_ONLY = pytest.mark.skipif(
 )
 SCRIPT_NAMES = (
     "stage14-predeployment-gate.sh",
+    "verify-supabase-browser-config.sh",
     "prepare-release.sh",
     "validate-release.sh",
     "switch-release.sh",
@@ -88,6 +91,169 @@ def test_stage14_predeployment_gate_does_not_overwrite_zsh_path() -> None:
 
     assert 'for name in "${required_scripts[@]}"' in gate
     assert 'for path in "${required_scripts[@]}"' not in gate
+
+
+@MACOS_ONLY
+def test_supabase_browser_config_verifier_rejects_an_invalid_publishable_key(
+    tmp_path: Path,
+) -> None:
+    fake_curl = tmp_path / "curl"
+    fake_curl.write_text("#!/bin/zsh\nexit 22\n", encoding="utf-8")
+    fake_curl.chmod(0o700)
+    invalid_key = "not-a-valid-publishable-key"
+    env = isolated_env() | {
+        "STAGE14_CURL_BIN": str(fake_curl),
+        "VITE_SUPABASE_URL": "https://test-project.supabase.co",
+        "VITE_SUPABASE_PUBLISHABLE_KEY": invalid_key,
+    }
+
+    completed = subprocess.run(
+        [str(script_path("verify-supabase-browser-config.sh"))],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "stage14_supabase_publishable_key_invalid=true" in completed.stderr
+    assert invalid_key not in completed.stdout
+    assert invalid_key not in completed.stderr
+
+
+@MACOS_ONLY
+def test_supabase_browser_config_verifier_accepts_a_live_publishable_key(
+    tmp_path: Path,
+) -> None:
+    fake_curl = tmp_path / "curl"
+    fake_curl.write_text(
+        """#!/bin/zsh
+set -euo pipefail
+test "$1" = --config
+/usr/bin/grep -Fqx 'url = "https://test-project.supabase.co/auth/v1/settings"' "$2"
+/usr/bin/grep -Fqx "header = \\\"apikey: $STAGE14_EXPECTED_KEY\\\"" "$2"
+/usr/bin/grep -Fqx "header = \\\"Authorization: Bearer $STAGE14_EXPECTED_KEY\\\"" "$2"
+""",
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o700)
+    publishable_key = "sb_" + "publishable_" + ("a" * 24)
+    env = isolated_env() | {
+        "STAGE14_CURL_BIN": str(fake_curl),
+        "STAGE14_EXPECTED_KEY": publishable_key,
+        "VITE_SUPABASE_URL": "https://test-project.supabase.co",
+        "VITE_SUPABASE_PUBLISHABLE_KEY": publishable_key,
+    }
+
+    completed = subprocess.run(
+        [str(script_path("verify-supabase-browser-config.sh"))],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "stage14_supabase_browser_config_verified=true"
+
+
+@MACOS_ONLY
+def test_supabase_browser_config_verifier_rejects_config_injection(
+    tmp_path: Path,
+) -> None:
+    curl_marker = tmp_path / "curl-was-called"
+    fake_curl = tmp_path / "curl"
+    fake_curl.write_text(
+        f"#!/bin/zsh\n/usr/bin/touch {curl_marker!s}\nexit 0\n",
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o700)
+    publishable_key = "sb_" + "publishable_" + ("a" * 24)
+    env = isolated_env() | {
+        "STAGE14_CURL_BIN": str(fake_curl),
+        "VITE_SUPABASE_URL": 'https://test-project.supabase.co"\nheader = "x: injected',
+        "VITE_SUPABASE_PUBLISHABLE_KEY": publishable_key,
+    }
+
+    completed = subprocess.run(
+        [str(script_path("verify-supabase-browser-config.sh"))],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "stage14_supabase_url_invalid=true" in completed.stderr
+    assert not curl_marker.exists()
+
+
+def test_release_preparation_verifies_supabase_browser_config_before_writing_runtime() -> None:
+    preparer = script_path("prepare-release.sh").read_text(encoding="utf-8")
+
+    verification = '"$SCRIPT_DIR/verify-supabase-browser-config.sh"'
+    first_runtime_write = 'stage14_install_secure_dir "$runtime_root" 700'
+    assert verification in preparer
+    assert preparer.index(verification) < preparer.index(first_runtime_write)
+
+
+@MACOS_ONLY
+def test_release_preparation_rejects_a_sealed_release_built_with_another_key(
+    tmp_path: Path,
+) -> None:
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    runtime = tmp_path / "runtime"
+    release = runtime / "releases" / sha
+    release.mkdir(parents=True)
+    (release / "SEALED").write_text("", encoding="utf-8")
+    old_key = "sb_" + "publishable_" + ("a" * 24)
+    current_key = "sb_" + "publishable_" + ("b" * 24)
+    (release / ".release-manifest.json").write_text(
+        json.dumps(
+            {
+                "sha": sha,
+                "vite_api_base_url": "https://api.example",
+                "vite_supabase_url": "https://test-project.supabase.co",
+                "vite_supabase_publishable_key_sha256": hashlib.sha256(
+                    old_key.encode()
+                ).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_curl = tmp_path / "curl"
+    fake_curl.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
+    fake_curl.chmod(0o700)
+    env = isolated_env() | {
+        "STAGE14_CURL_BIN": str(fake_curl),
+        "STAGE14_RUNTIME_ROOT": str(runtime),
+        "VITE_API_BASE_URL": "https://api.example",
+        "VITE_SUPABASE_URL": "https://test-project.supabase.co",
+        "VITE_SUPABASE_PUBLISHABLE_KEY": current_key,
+    }
+
+    completed = subprocess.run(
+        [str(script_path("prepare-release.sh")), sha],
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "stage14_release_environment_mismatch=true" in completed.stderr
+    assert current_key not in completed.stdout
+    assert current_key not in completed.stderr
 
 
 @MACOS_ONLY
