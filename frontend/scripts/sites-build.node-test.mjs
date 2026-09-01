@@ -52,6 +52,39 @@ test("Sites Worker 为前端路由返回 SPA 入口", async () => {
   assertSecurityHeaders(response);
 });
 
+test("Sites Worker 在外部静态资源绑定为空时仍能返回已构建页面", async () => {
+  const worker = await loadWorker();
+  const environment = {
+    ASSETS: {
+      async fetch() {
+        return new Response(null, { status: 404 });
+      },
+    },
+  };
+  const pageResponse = await worker.fetch(
+    new Request("https://paper-grading.example/login", {
+      headers: { Accept: "text/html" },
+    }),
+    environment,
+  );
+
+  assert.equal(pageResponse.status, 200);
+  const page = await pageResponse.text();
+  assert.match(page, /<div id="root"><\/div>/);
+  assertSecurityHeaders(pageResponse);
+
+  const scriptPath = page.match(/<script[^>]+src="([^"]+\.js)"/u)?.[1];
+  assert.ok(scriptPath);
+  const scriptResponse = await worker.fetch(
+    new Request(new URL(scriptPath, "https://paper-grading.example")),
+    environment,
+  );
+  assert.equal(scriptResponse.status, 200);
+  assert.match(scriptResponse.headers.get("content-type"), /^text\/javascript/u);
+  assert.ok((await scriptResponse.arrayBuffer()).byteLength > 100_000);
+  assertSecurityHeaders(scriptResponse);
+});
+
 test("Sites Worker 保留静态资源并拒绝把非 GET 请求改写成页面", async () => {
   const worker = await loadWorker();
   const environment = assetEnvironment();

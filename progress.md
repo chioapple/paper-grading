@@ -471,3 +471,13 @@
   源码与构建密钥扫描 2 项通过，失败 0；严格 mypy 171 个源文件、Ruff、格式、lint、类型检查、
   依赖审计、Sites 构建、CI YAML、Shell 语法和差异检查均通过。正式文档 31 个 zsh 块、12 个
   Python heredoc 语法通过。未执行生产写入、模型调用、Sites 发布、Funnel 启用、告警或回滚。
+
+## 2026-09-01
+
+- 阶段 14 节点 2.1—2.4 已执行；Sites 回滚/候选保存为版本 1/2，候选版本 2 owner-only 部署状态
+  `succeeded`。节点 2.5 的 owner 页面检查返回 404，日志和逐路径探针确认自定义 Worker 已执行，
+  但实际 Sites `ASSETS` binding 为空；候选 `9730e23ec15866d7d0e77dd288ee1851ae04b295` 作废，
+  节点 3 未开始。
+- 完成 Sites 自包含构建修复：构建产物确定性内嵌进 Worker，外部 binding 仅作后备；新增空 binding
+  下 SPA 和真实 JS 回归。Sites 专项 3、前端 70、阶段 14 后端契约 20、源码/构建密钥扫描通过，
+  失败 0；打包结构通过。等待新提交和 GitHub CI 8/8 后重做节点 2.3—2.5。
