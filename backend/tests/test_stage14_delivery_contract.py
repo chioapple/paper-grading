@@ -164,7 +164,9 @@ def test_browser_and_runbook_boundaries_are_explicit() -> None:
     assert "referrer-policy: no-referrer" in smoke.lower()
     assert "permissions-policy: camera=(), microphone=(), geolocation=()" in smoke.lower()
     assert "unacked" in smoke.lower()
-    assert "签名 URL 过期" in smoke
+    assert "已存在账户登录" in smoke
+    assert "E2E_REAL_MODEL_CALLS" not in smoke
+    assert "npm --prefix frontend run e2e:real" not in smoke
     assert "实际收到" in monitoring
     assert "恢复发布候选" in rollback
 
@@ -195,11 +197,20 @@ def test_stage_fourteen_acceptance_is_zero_cost_and_uses_recorded_git_sha() -> N
 
     assert "阶段 14 新增费用为 0" in acceptance
     assert "PROVIDER_CALLS_ENABLED=false" in acceptance
+    assert "创建 1 个 Keyword monitor" in acceptance
+    assert '`"status":"ready"`' in acceptance
     assert "zero_cost_readonly_business_check=true" in acceptance
     assert "三个命令全部禁止执行" in acceptance
     assert "stage14_provider_key_and_network_policy_verified" not in acceptance
-    assert "期望间隔设为 5 分钟" in acceptance
+    assert "检查间隔选择免费方案的 5 分钟" in acceptance
     assert "先在 UptimeRobot 建立维护窗口" not in acceptance
+    assert "Heartbeat/Cron monitor" not in acceptance
+    assert "UPTIMEROBOT_HEARTBEAT_URL" not in acceptance
+    alert_section = acceptance.split("### 6.2 实际告警与恢复", maxsplit=1)[1].split(
+        "### 6.3 回滚 Mac 和 Sites", maxsplit=1
+    )[0]
+    assert "com.paper-grading.api.plist" in alert_section
+    assert "com.paper-grading.export.plist" not in alert_section
     assert "single_paid_flow" not in acceptance
     assert 'read -r "candidate_sha?' not in acceptance
     assert "shared/acceptance/candidate-sha" in acceptance
@@ -242,9 +253,10 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "stage14_state_dir" in runtime
     assert "funnel status --json" in runtime
     assert 'prefixes != ["exports", "grading", "maintenance"]' in runtime
-    assert "curl --config" in watchdog
+    assert "http://127.0.0.1:8000/health/ready" in watchdog
     assert 'test "${PROVIDER_CALLS_ENABLED:-}" = "false"' in watchdog
-    assert "heartbeat.uptimerobot.com" in watchdog
+    assert "heartbeat.uptimerobot.com" not in watchdog
+    assert "UPTIMEROBOT_HEARTBEAT_URL" not in watchdog
     assert "shared/env/production.env" in component_runner
     assert "CELERYBEAT_SCHEDULE_FILENAME" in component_runner
     assert "stage14_predeployment_gate=true" in predeployment_gate
@@ -256,7 +268,11 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "--env-dir" in env_updater
     assert "production.env" in env_updater
     assert "grading-worker.env" in env_updater
-    assert 'read -rs "uptimerobot_heartbeat_url?' in env_updater
+    assert 'read -rs "uptimerobot_heartbeat_url?' not in env_updater
+    assert "UPTIMEROBOT_HEARTBEAT_URL=" not in env_updater
+    assert "UPTIMEROBOT_HEARTBEAT_URL" not in component_runner
+    env_example = (PROJECT_ROOT / "infra/local/production.env.example").read_text(encoding="utf-8")
+    assert "UPTIMEROBOT_HEARTBEAT_URL" not in env_example
     assert "PROVIDER_CALLS_ENABLED=false" in env_updater
     assert '"$frontend_origin" != https://*' in env_updater
     assert '"$vite_api_base_url" != https://*' in env_updater

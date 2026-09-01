@@ -488,3 +488,18 @@
 - 节点 2.5 登录与找回密码失败已定位为候选和回滚包使用无效 Supabase 浏览器 key；生产 Auth
   settings 对该 key 返回 401，而本机旧封存包的同项目 publishable key 返回 200。新增发布前在线
   只读验证和同 SHA 前端环境一致性门禁；等待新候选 CI 后重建并私有部署。
+
+## 2026-09-02
+
+- UptimeRobot 当前 Free 账户没有可执行的 Heartbeat 入口，普通 HTTP monitor 的自定义 GET 和
+  成功状态码也显示升级标记。已把阶段 14 改为一个免费 5 分钟 Keyword monitor：检查 Funnel
+  `/health/ready` 响应含 `"status":"ready"`，只绑定免费邮件的 Down/Up 通知。
+- 生产环境生成器、示例、组件启动器和本机 watchdog 已移除 `UPTIMEROBOT_HEARTBEAT_URL`；watchdog
+  只检查本机 API、Redis 和三个 Worker，不再发出外部请求。告警演练改为卸载 API LaunchAgent，
+  收到 Down 邮件后自动恢复 API，再确认 Up 邮件。
+- 节点 4—6 零费用复查确认：节点 4 仅只读 HTTPS/浏览器检查；节点 5 的模型调用硬关闭且只核对
+  数据库计数；节点 6 只用免费 Keyword/邮件并在回滚前手工暂停。Sites 仅在现有 ChatGPT 方案
+  公测限额内无新增费用，Supabase Free 可能因低活动暂停，文档不再承诺持续在线 SLA。
+- 同步修正 `docs/runbooks/smoke-test.md` 的旧真实 E2E 路径后，阶段 14 聚焦测试返回
+  `25 passed, 10 deselected`，本地预部署门禁返回 `stage14_predeployment_gate=true`。当前只剩
+  提交、推送和等待新候选 SHA 的 GitHub CI 精确 8/8。

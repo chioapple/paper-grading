@@ -1,11 +1,13 @@
 # CONTEXT
 
-- 当前正在做什么：阶段 14 节点 2.5 暂停。Sites 页面和资源已返回 200，但候选与回滚封存包内的
-  Supabase 浏览器 key 被生产 Auth 以 `401 Invalid API key` 拒绝；登录尚未进入密码校验，重置邮件
-  也未发送。旧封存版本中的同项目 publishable key 已只读验证为 200。发布脚本现会在构建前调用
-  Auth settings 只读接口验证 key，并拒绝静默复用前端环境不一致的同 SHA 封存包。下一步是提交该
-  门禁修复、取得新候选 CI 8/8，再用已验证 key 重建回滚与候选 release、私有部署并重做 2.5。
-  节点 3 未开始；生产数据库未迁移，模型调用、业务写入、告警和回滚均未执行。
+- 当前正在做什么：阶段 14 前一候选 `eb2ca93571e4c9fa8649af4b968c32ad11f18ef2` 已完成
+  Funnel、双 release、Sites 私有部署和节点 2.5 页面检查；节点 3 尚未开始，生产环境文件和
+  LaunchAgent 均不存在。用户实际 UptimeRobot Free 页面虽与帮助页存在出入，但当前账户界面下可
+  稳定执行的免费方案只有一个 5 分钟 Keyword monitor；因此本轮移除全部 Heartbeat URL、环境变量
+  和外部 ping，只保留对 `/health/ready` 响应体中 `"status":"ready"` 的免费关键字检查，并把
+  `smoke-test.md` 从真实 E2E 改为纯只读页面检查。当前本地门禁 `stage14_predeployment_gate=true`，
+  阶段 14 聚焦后端测试 `25 passed, 10 deselected`。下一步是提交并推送新候选，待新 SHA 取得 CI
+  8/8 后重做受 SHA 影响的 2.3—2.5。生产数据库未迁移，模型调用、业务写入、实际告警和回滚均未执行。
 - 最终验收信号：用户于 2026-07-26 明确确认 `docs/STAGE12_ACCEPTANCE.md` 全部步骤执行通过，阶段 12 已完成。
 - 阶段 12 最终迁移版本：`20260722_0017`；用户确认真实项目前向迁移和验收均已通过，真实项目不得为验收回退。
 - 阶段 12 本地代码：`0017` 原子冻结模型参数、批次和 `export_items`；导出进程只接受专用最小角色的 `EXPORT_DATABASE_URL`。同一快照生成完全相同的文件名、XLSX 字节和 SHA-256，600 秒租约长于 Worker 硬时限。完成竞争失败后，只有当前令牌能先原子转为 failed 才可删除本次新对象，失租旧 Worker 不删除；连续软超时或三次 Worker 丢失会持久化为明确失败，不会永久卡在 running。

@@ -61,7 +61,7 @@ flowchart TD
 | `backend/app/monitoring/` | 数据库与 Storage 配额计算、事务门禁、字节预留和稳定错误状态 |
 | `backend/app/maintenance/` | 默认关闭的保留状态机，以及目标无关的加密备份和恢复接口 |
 | `frontend/src/features/exports/` | 草稿/最终导出选择、状态轮询、失败说明、历史列表和短时下载入口 |
-| `infra/local/` | 常开 Mac 的 API、Worker、Tailscale、防休眠、watchdog、release/current/shared 门禁脚本和 `launchd` 配置 |
+| `infra/local/` | 常开 Mac 的 API、Worker、Tailscale、防休眠、本地健康 watchdog、release/current/shared 门禁脚本和 `launchd` 配置 |
 | `frontend/sites/` | Sites 静态资源代理、SPA 深层路径回退和前端安全响应头 |
 | `docs/design/` | App Shell 概念图和可执行视觉规范 |
 | `e2e/` | 本地 `/mock` 与显式授权真实环境分离的管理员、教师浏览器全流程测试 |
@@ -194,7 +194,8 @@ Supabase Auth 配置负责关闭注册入口，数据库触发器再用 `auth.us
 ## 6. 当前状态
 
 阶段 1 至阶段 13 已完成。阶段 14 的本地实现、简易验收流程和系统性复查已经完成；
-Tailscale 1.98 Funnel 配置读写、环境值安全转义和模型调用硬关闭均有回归测试。当前仍须把
-本轮改动形成新候选并取得精确 CI 8/8。有效 Tailscale 身份状态已存在，但 Funnel、生产
-release、环境文件、前向迁移、`launchd`、Sites 正式版本、免费告警和双端回滚尚未执行。
+Tailscale 1.98 Funnel 配置读写、环境值安全转义、模型调用硬关闭和无外部写入的本地 watchdog
+均有回归测试。前一候选已完成 Funnel、双 release、Sites 私有部署和页面检查；本轮需把免费
+Keyword 监控修复形成新候选并取得精确 CI 8/8，再重做受 SHA 影响的 release/Sites 准备。
+生产环境文件、前向迁移、`launchd`、实际免费邮件告警和双端回滚尚未执行。
 阶段 14 只允许零新增费用、无模型调用的验收；自动清理、备份创建和备份清理继续关闭。

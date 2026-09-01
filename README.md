@@ -4,9 +4,9 @@
 
 Paper Grading 是一个面向教师的云端英文作文批改网站。管理员创建教师账户并统一配置模型 API；教师创建作业、确认评分标准、批量上传论文、复核 AI 评分建议并导出 Excel。
 
-阶段 1 至阶段 13 已完成。阶段 14 第 6.2 节及之前已经完成，当前正在把部署切换为
-Sites 前端、常开 Mac 后端、本机 Redis、Tailscale Funnel、`launchd` 和 UptimeRobot。
-Sites 项目与前端适配已经完成，真实部署、告警和回滚仍在验收，因此阶段 14 保持进行中。
+阶段 1 至阶段 13 已完成。阶段 14 使用 Sites 前端、常开 Mac 后端、本机 Redis、
+Tailscale Funnel、`launchd` 和一个免费的 UptimeRobot Keyword monitor。前一候选已完成
+私有页面检查；生产环境、实际告警和双端回滚仍待验收，因此阶段 14 保持进行中。
 自动清理与备份保持关闭。评分提示词为 `grading-prompt.v3`，历史版本仍按原快照重建。
 
 ## 计划功能
@@ -131,8 +131,10 @@ API、评分/维护 Worker、独立 Excel 导出 Worker、Tailscale、防休眠�
 `PROVIDER_CALLS_ENABLED=false`；API 不构造供应商连接测试器，评分任务和周期分发在访问
 数据库或供应商前直接拒绝。阶段 14 禁止模型连接测试、Rubric 生成、评分和真实 E2E，只做
 页面、健康状态、权限边界和数据库计数的只读检查。GitHub CI 只用公开仓库标准 runner，不上传
-构建 artifact；Supabase、Tailscale、UptimeRobot 必须保持免费方案。Sites 只有在账户页面明确
-显示本次私有发布不产生新增费用时才可继续，否则验收停止。
+构建 artifact；Supabase、Tailscale、UptimeRobot 必须保持免费方案。UptimeRobot 只允许一个
+5 分钟 Keyword monitor 和免费邮件，不使用带皇冠的 HTTP method、状态码或其他升级项。
+Sites 仅在现有 ChatGPT 方案公测限额内使用；账户页面必须明确本次私有发布不产生新增费用，
+否则验收停止。Supabase Free 低活动项目可能自动暂停，因此本方案不承诺持续在线 SLA。
 
 阶段 14 生产验收开始前，先在仓库根目录执行 `./infra/local/stage14-predeployment-gate.sh`；
 它只做代码门禁检查，成功固定输出 `stage14_predeployment_gate=true`。
@@ -248,7 +250,9 @@ find frontend/dist -type f -print0 |
 - [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create)：Anthropic 使用独立认证、结构化输出、停止原因和缓存用量字段。
 - [Gemini GenerateContent](https://ai.google.dev/api/generate-content)：Gemini 使用独立 Schema、思考用量、拒答和截断信号，保持默认采样参数。
 - [Tailscale Funnel 文档](https://tailscale.com/docs/features/tailscale-funnel)：个人非商业部署使用固定 `*.ts.net` HTTPS 入口，本机 API 不直接开放公网端口。
-- [Sites 文档](https://learn.chatgpt.com/docs/sites)：前端通过 Sites 保存版本并部署，运行时密钥不写入 `.openai/hosting.json`。
+- [UptimeRobot 定价](https://uptimerobot.com/pricing/) 与 [Keyword 配置](https://help.uptimerobot.com/en/articles/11358364-how-to-create-your-first-monitor-on-uptimerobot-quick-setup-guide)：Free 包含 50 个 monitor、5 分钟间隔和 Keyword monitor；阶段 14 只使用一个 Keyword monitor 和免费邮件。
+- [Supabase Free 项目暂停](https://supabase.com/docs/guides/platform/free-project-pausing)：低活动 Free 项目可能在 7 天后暂停，因此零新增费用方案不宣称持续在线 SLA。
+- [Sites 公测说明](https://help.openai.com/en/articles/20001339-creating-and-managing-chatgpt-sites)：Sites 在当前方案限额内包含；前端保存版本并私有部署，运行时密钥不写入 `.openai/hosting.json`，但不能宣称无限量永久免费。
 
 ## 已完成
 

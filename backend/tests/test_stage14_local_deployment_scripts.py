@@ -544,7 +544,6 @@ def test_environment_writer_shell_quotes_every_user_supplied_value(tmp_path: Pat
         "master$key&value=",
         "https://frontend.example",
         "https://api.example",
-        "https://heartbeat.uptimerobot.com/test?value=$HOME&ok=1",
     ]
     env = isolated_env() | {"STAGE14_RUNTIME_ROOT": str(runtime)}
 
@@ -569,7 +568,6 @@ def test_environment_writer_shell_quotes_every_user_supplied_value(tmp_path: Pat
             'set -euo pipefail; source "$PRODUCTION_ENV"; '
             'test "$DATABASE_URL" = "$EXPECTED_DATABASE_URL"; '
             'test "$SUPABASE_PUBLISHABLE_KEY" = "$EXPECTED_PUBLISHABLE_KEY"; '
-            'test "$UPTIMEROBOT_HEARTBEAT_URL" = "$EXPECTED_HEARTBEAT_URL"; '
             'test "$PROVIDER_CALLS_ENABLED" = false; '
             'source "$GRADING_ENV"; '
             'test "$DATABASE_URL" = "$EXPECTED_GRADING_DATABASE_URL"',
@@ -580,7 +578,6 @@ def test_environment_writer_shell_quotes_every_user_supplied_value(tmp_path: Pat
             "GRADING_ENV": str(grading_env),
             "EXPECTED_DATABASE_URL": database_url,
             "EXPECTED_PUBLISHABLE_KEY": inputs[4],
-            "EXPECTED_HEARTBEAT_URL": inputs[10],
             "EXPECTED_GRADING_DATABASE_URL": inputs[2],
         },
         check=False,

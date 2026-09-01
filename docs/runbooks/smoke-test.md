@@ -44,59 +44,41 @@ curl --fail --silent --show-error --output /dev/null \
 tr -d '\r' <"$STAGE14_SMOKE_DIR/allowed-cors.headers" |
   rg -Fxi "access-control-allow-origin: $STAGE14_FRONTEND_ORIGIN"
 
-curl --silent --show-error --output /dev/null \
-  --dump-header "$STAGE14_SMOKE_DIR/blocked-cors.headers" \
+blocked_status=$(curl --silent --show-error --output /dev/null \
+  --write-out '%{http_code}' --dump-header "$STAGE14_SMOKE_DIR/blocked-cors.headers" \
   -H 'Origin: https://attacker.invalid' \
   -H 'Access-Control-Request-Method: GET' \
-  -X OPTIONS "${STAGE14_API_BASE_URL%/}/auth/me"
+  -X OPTIONS "${STAGE14_API_BASE_URL%/}/auth/me")
+test "$blocked_status" = "400"
 if tr -d '\r' <"$STAGE14_SMOKE_DIR/blocked-cors.headers" |
   rg -qi '^access-control-allow-origin:'; then
   exit 1
 fi
 ```
 
-## 认证与完整流程
+## 页面只读检查
 
-执行终端：桌面 Chrome、邮箱页面和本机项目根目录。
-前置条件：独立验收管理员、一名全新邀请教师 A、另一名既有教师 B、1 篇无敏感内容的验收 DOCX/PDF；一次完整 Rubric 与单篇评分费用已单独授权。
-预期结果：管理员只发送一次邀请；教师 A 在真实邮箱完成回调、设密和首次登录。随后自动脚本只创建 1 个单篇批次，完成创建作业、上传、评分、复核、Excel 导出、同一签名 URL 过期、手机复用和教师 B 隔离。两个视口的 Console 错误和警告均为 0。
-安全回传：邀请回调是否完成、`1 passed`、批次规模和 Console 计数；不回传邮箱、密码、Token、论文、对象路径、签名 URL或模型响应。
+执行终端：桌面 Chrome、邮箱页面。
+前置条件：使用一个已存在账户登录；阶段 14 保持 `PROVIDER_CALLS_ENABLED=false`；不邀请新账户、
+不上传文件、不创建作业、不创建批改任务、不生成导出。
+预期结果：`/login`、`/auth/callback`、`/assignments`、`/grading-jobs`、`/exports` 和已有详情页可访问；
+页面不空白、不出现 404，桌面与 `390 × 844` 视口的 Console 错误和警告均为 0。
+安全回传：已存在账户登录是否成功、五个路径是否可访问、桌面和手机视口 Console 计数。
 
-先由管理员在正式前端邀请教师 A。教师 A 必须在邮箱中打开本次一次性链接、设置新密码并首次登录；密码设置属于人工步骤，不由脚本输入。完成后安全注入以下变量并运行：
+固定步骤：
 
-```bash
-set -euo pipefail
-cd "/Users/a1-6/Documents/Paper Grading"
-test -n "${E2E_REAL_BASE_URL:?missing E2E_REAL_BASE_URL}"
-test -n "${E2E_REAL_TEACHER_EMAIL:?missing activated teacher email}"
-test -n "${E2E_REAL_TEACHER_PASSWORD:?missing activated teacher password}"
-test -n "${E2E_REAL_TEACHER_DISPLAY_NAME:?missing teacher display name}"
-test -n "${E2E_REAL_OTHER_TEACHER_EMAIL:?missing other teacher email}"
-test -n "${E2E_REAL_OTHER_TEACHER_PASSWORD:?missing other teacher password}"
-test -n "${E2E_REAL_MODEL_LABEL:?missing model label}"
-test -n "${E2E_REAL_ASSIGNMENT_TITLE:?missing assignment title}"
-test -n "${E2E_REAL_INSTRUCTIONS_PATH:?missing instructions path}"
-test -n "${E2E_REAL_RUBRIC_PATH:?missing rubric path}"
-test -n "${E2E_REAL_PAPER_PATH:?missing paper path}"
-test -n "${E2E_REAL_TOTAL_SCORE:?missing total score}"
-test -n "${E2E_REAL_SCORE_STEP:?missing score step}"
-export E2E_REAL=true
-export E2E_REAL_WRITES=I_ACCEPT_STAGE14_TEST_WRITES
-export E2E_REAL_MODEL_CALLS=I_ACCEPT_ONE_COMPLETE_MODEL_FLOW
-npm --prefix frontend run e2e:real
-```
-
-## 签名 URL 过期验证
-
-真实脚本从首次下载响应中仅保留内存中的同一个签名 URL，等待超过
-`expires_in_seconds` 5 秒后再次请求；必须返回 4xx。脚本不输出 URL，安全回传也不得
-回传签名 URL。
+1. 以已存在账户完成登录；如果浏览器已保留有效会话，只需刷新并确认会话仍有效。
+2. 只读打开 `/assignments`、`/grading-jobs`、`/exports` 和一个已有详情页；不得点击任何会产生写入或模型调用的按钮。
+3. 打开 Chrome DevTools → Console，确认当前视口错误和警告都为 0。
+4. 打开 Chrome DevTools → Network，重新加载 `/login`，检查页面主文档响应头也包含四个安全头。
+5. 切换到 `390 × 844`，再次确认无横向滚动条，且 Console 错误和警告仍为 0。
 
 ## 部署后检查
 
 执行终端：本机项目根目录和 Supabase SQL Editor。
-前置条件：完整流程已结束，当前没有其他业务任务。
-预期结果：三个 Worker 心跳正常；Celery active/reserved、Redis 三个队列、`unacked`、`unacked_index` 和数据库 running 计数全部为 0；失败率和容量指标无未处理告警。
+前置条件：只读页面检查已结束，当前没有其他业务任务。
+预期结果：三个 Worker 心跳正常；Celery active/reserved、Redis 三个队列、`unacked`、
+`unacked_index` 和数据库 running 计数全部为 0；失败率和容量指标无未处理告警。
 安全回传：心跳、active/reserved、队列、unacked、running 计数、失败率区间和容量百分比。
 
 ```bash

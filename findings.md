@@ -278,6 +278,19 @@
 - 候选 `9730e23ec15866d7d0e77dd288ee1851ae04b295` 的 Sites 版本 2 已部署成功且保持 owner-only，
   但 owner 打开正式 origin 返回 404。Worker 请求日志包含已鉴权用户信息、执行结果为正常结束且响应
   为 404，排除未登录、访问范围和 Worker 启动失败。
+
+## 2026-09-02 阶段 14 免费监控复查
+
+- 当前仓库对免费监控的真实阻塞不只在 `docs/STAGE14_ACCEPTANCE.md`。`infra/local/watchdog.sh`
+  原先强制要求 `UPTIMEROBOT_HEARTBEAT_URL` 并向 `heartbeat.uptimerobot.com` 主动发送请求，
+  `infra/local/update-production-env.sh` 与 `infra/local/production.env.example` 也把该变量当成必填，
+  因此免费方案一旦没有 Heartbeat 入口就会在节点 3.3 和 6.2 同时失败。
+- 第 4 步之后还存在第二个系统性矛盾：`docs/runbooks/smoke-test.md` 虽被 `deployment.md`
+  引用为生产冒烟，但文件内容仍要求真实邀请、真实写入和一次模型调用。这与阶段 14“新增费用为 0”
+  的当前边界直接冲突，必须改成只读页面与健康检查。
+- 外部帮助页与账户界面冲突时，阶段文档必须以“当前账户可实际点选并保存的免费项”为准，而不是以帮助页
+  文案为准。当前可稳妥执行的免费方案是单个 5 分钟 Keyword monitor 加免费邮件通知；Heartbeat、
+  自定义 HTTP method、成功状态码和维护窗口都不能作为当前验收前提。
 - 正式 origin 的 `/`、`/index.html`、`/dist/index.html` 和实际 JS 资源路径均返回 404，同时响应保留
   自定义安全头，证明自定义 Worker 已运行而实际 `ASSETS` binding 没有部署静态文件。
 - 修复后的 Sites 构建把静态资源确定性写入 `dist/server/index.js`，外部 `ASSETS` 仅保留为后备；新增
@@ -298,3 +311,18 @@
   `9730e23...` 内的同项目 publishable key 对 Auth settings 返回 200。
 - 根因不是账号、Sites 访问范围或数据库。解决路径是用已验证 key 重建两个封存包并发布新候选，
   同时把在线 key 验证和同 SHA 环境一致性检查固化到 release 门禁。
+
+## 2026-09-02 UptimeRobot 免费监控修正
+
+- 当前 UptimeRobot Free 定价明确包含 50 个 monitor、5 分钟间隔和 Keyword monitor；用户账户
+  实际页面没有 Heartbeat 入口，普通 HTTP monitor 的 GET 与成功状态码选项带升级标记。因此原来的
+  HTTP 加 Heartbeat 双监控在该账户上不可执行，账户 UI 是本次验收的事实源。
+- `/health/ready` 的成功响应稳定包含 `"status":"ready"`，数据库不可用时返回 503 和
+  `"status":"not_ready"`。一个 Keyword monitor 足以同时覆盖 Funnel、API 和数据库就绪状态，
+  不需要自定义 HTTP method、成功状态码、请求头或外部 heartbeat URL。
+- 单一 Keyword monitor 不负责逐个 Worker 的外部邮件告警。三个 Worker 由 `launchd KeepAlive`
+  自动重启，本机 watchdog 每 60 秒记录 API、Redis 和 Worker 健康失败；阶段 14 的实际外部告警
+  验收只验证公开 `/health/ready` 的 Down/Up 邮件，不把未覆盖的 Worker 告警写成已具备。
+- 节点 4—6 没有新增模型、数据库写入或付费监控动作。绝对总成本为 0 仍不能由本架构保证：Sites
+  依赖现有 ChatGPT 方案并受公测限额约束，Mac、网络和用电也是既有成本；可严格保证的是本阶段
+  不购买、不升级、不调用模型且新增费用为 0。

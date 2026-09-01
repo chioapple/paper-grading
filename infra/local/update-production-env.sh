@@ -74,7 +74,6 @@ read -r "supabase_storage_bucket?输入 SUPABASE_STORAGE_BUCKET："
 read -rs "provider_master_key?输入 PROVIDER_MASTER_KEY："; print
 read -r "frontend_origin?输入 FRONTEND_ORIGIN："
 read -r "vite_api_base_url?输入 VITE_API_BASE_URL："
-read -rs "uptimerobot_heartbeat_url?输入 UPTIMEROBOT_HEARTBEAT_URL："; print
 
 if [[ "$frontend_origin" != https://* || "$frontend_origin" = */ ]]; then
   print -u2 "FRONTEND_ORIGIN 必须以 https:// 开头且不带尾斜杠"
@@ -107,7 +106,6 @@ provider_master_key_q=$(quote_env_value "$provider_master_key")
 auth_invite_redirect_url_q=$(quote_env_value "$auth_invite_redirect_url")
 frontend_origin_q=$(quote_env_value "$frontend_origin")
 vite_api_base_url_q=$(quote_env_value "$vite_api_base_url")
-uptimerobot_heartbeat_url_q=$(quote_env_value "$uptimerobot_heartbeat_url")
 
 umask 077
 cat >"$staging_dir/production.env" <<EOF
@@ -128,7 +126,6 @@ FRONTEND_ORIGIN=$frontend_origin_q
 VITE_API_BASE_URL=$vite_api_base_url_q
 VITE_SUPABASE_URL=$supabase_url_q
 VITE_SUPABASE_PUBLISHABLE_KEY=$supabase_publishable_key_q
-UPTIMEROBOT_HEARTBEAT_URL=$uptimerobot_heartbeat_url_q
 EOF
 cat >"$staging_dir/grading-worker.env" <<EOF
 DATABASE_URL=$grading_database_url_q

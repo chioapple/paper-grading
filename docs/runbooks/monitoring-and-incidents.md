@@ -4,9 +4,8 @@
 
 | 指标 | 告警条件 | 处置 |
 |---|---|---|
-| Funnel API `/health/live` | UptimeRobot 连续检查非 200 | 检查 Funnel、网络和 API |
-| API `/health/ready` | 非 200 | 停止新写入，检查数据库 |
-| Watchdog heartbeat | API、Redis 或任一 Worker 心跳失败 | 修复目标进程，不清空队列 |
+| Funnel API `/health/ready` | UptimeRobot Keyword monitor 找不到 `"status":"ready"` | 检查 Funnel、网络、API 和数据库 |
+| 本机 watchdog | API、Redis 或任一 Worker 本地健康检查失败 | 查看 watchdog 日志并修复目标进程，不清空队列 |
 | 队列等待 | 评分/导出超过 15 分钟，维护超过 2 分钟 | 检查消费者，不盲目扩大并发 |
 | 失败率 | 15 分钟至少 10 个终态任务且失败率达到 10% | 按稳定错误分类排查 |
 | 数据库/Storage 容量 | 70% 提醒，85% 阻断 | 保持写入门禁，不自动清理 |
@@ -40,28 +39,31 @@ cd backend
 
 ## UptimeRobot
 
-配置两个免费监控：
+只配置一个免费监控：
 
-1. HTTP 监控：正式 Funnel 的 `/health/ready`，5 分钟间隔；
-2. Heartbeat 监控：`infra/local/watchdog.sh` 每 60 秒在 API、Redis 和三个 Worker
-   全部健康时发送一次。
+1. 类型：`Keyword`；名称：`Paper Grading API Ready`；
+2. URL：正式 Funnel 的 `/health/ready`；keyword：`"status":"ready"`；
+3. 找不到 keyword 时告警，固定 5 分钟间隔，只绑定免费邮件联系人，并接收 Down 和 Up；
+4. 不启用任何带皇冠、`Upgrade`、试用或付款提示的 HTTP method、成功状态码、请求头、
+   SSL/域名、SMS、语音、延迟/重复通知或维护窗口。
 
-Heartbeat URL 只保存在 `.env.stage14-production`，不得写入仓库或聊天。
+`infra/local/watchdog.sh` 每 60 秒只在本机检查 API、Redis 和三个 Worker，不保存监控 URL，
+也不向 UptimeRobot 发送请求。
 
 ## 告警验收
 
 执行位置：UptimeRobot 与本机终端。
 前置条件：没有真实业务任务；队列、active、reserved 和 running 均为 0。
-预期结果：停止导出 Worker 后 heartbeat 中断并实际收到告警；恢复同一 Worker 后收到
-恢复通知。Redis 不清空，评分与维护 Worker 始终在线。
+预期结果：完整卸载 API LaunchAgent 后 Keyword monitor 实际发送 Down 邮件；恢复同一 API
+后收到 Up 邮件。Redis 不清空，三个 Worker 始终在线。
 
 固定步骤：
 
 1. 记录全部健康状态和队列为 0；
-2. `launchctl bootout gui/$UID ~/Library/LaunchAgents/com.paper-grading.export.plist`；
-3. 等待 UptimeRobot heartbeat 告警并确认实际收到；
-4. `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.paper-grading.export.plist`；
-5. 确认 `exports@` 恢复、队列仍为 0，并收到恢复通知。
+2. `launchctl bootout gui/$UID ~/Library/LaunchAgents/com.paper-grading.api.plist`；
+3. 等待 UptimeRobot Keyword monitor 的 Down 邮件并确认实际收到；
+4. `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.paper-grading.api.plist`；
+5. 确认 `/health/ready` 恢复、队列仍为 0，并收到 Up 邮件。
 
 只看到 UptimeRobot 配置不算通过。安全回传只记录触发时间、是否收到告警、恢复时间和
 是否收到恢复通知。

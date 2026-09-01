@@ -35,7 +35,6 @@ case "${1:-}" in
     unset VITE_API_BASE_URL
     unset VITE_SUPABASE_URL
     unset VITE_SUPABASE_PUBLISHABLE_KEY
-    unset UPTIMEROBOT_HEARTBEAT_URL
     cd "$CURRENT_ROOT/backend"
     exec "$CURRENT_ROOT/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port 8000
     ;;
@@ -49,7 +48,6 @@ case "${1:-}" in
     unset VITE_API_BASE_URL
     unset VITE_SUPABASE_URL
     unset VITE_SUPABASE_PUBLISHABLE_KEY
-    unset UPTIMEROBOT_HEARTBEAT_URL
     cd "$CURRENT_ROOT/backend"
     exec "$CURRENT_ROOT/.venv/bin/python" -m app.workers.supervisor
     ;;
@@ -62,7 +60,6 @@ case "${1:-}" in
     unset VITE_API_BASE_URL
     unset VITE_SUPABASE_URL
     unset VITE_SUPABASE_PUBLISHABLE_KEY
-    unset UPTIMEROBOT_HEARTBEAT_URL
     cd "$CURRENT_ROOT/backend"
     exec "$CURRENT_ROOT/.venv/bin/celery" \
       -A app.export.celery_app:celery_app \

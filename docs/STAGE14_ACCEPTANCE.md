@@ -48,12 +48,12 @@
 | GitHub Actions | 仓库仍为 Public；8 个 jobs 都使用标准 `ubuntu-latest` | 标准 GitHub-hosted runner 对 Public 仓库免费；禁止 larger runner、Codespaces 和付费安全产品 |
 | Supabase | 目标组织为 **Free / $0**，无付费 add-on，数据库、Storage、流量均在免费额度内 | Free 为 $0/月；超额会受限而不是收费；不得升级 Pro |
 | Tailscale | 当前 tailnet 为 **Personal / $0 Free forever**，个人非商业用途，无付费试用 | 使用个人公共域账号；Funnel 对所有方案可用 |
-| UptimeRobot | 当前账户为 **Free / 0**，不要求信用卡 | 只建 2 个监控；固定 5 分钟；只用免费邮件通知；禁止 SMS、语音、自动充值和维护窗口 |
-| Codex Sites | 现有项目的保存与私有部署界面不出现购买、升级、credits 或额外价格 | 官方公开资料没有给出 Sites 独立免费价格；只有账户界面明确显示本次部署新增费用为 0 才可继续 |
+| UptimeRobot | 当前账户为 **Free / 0**，不要求信用卡 | 只创建 1 个免费 Keyword monitor；固定 5 分钟；只用免费邮件通知；不修改带皇冠的 HTTP method、状态码、SSL/域名、SMS、语音、自动充值或维护窗口 |
+| Codex Sites | 现有 ChatGPT 方案已包含 Sites，保存与私有部署界面不要求购买 credits 或升级 | Sites 公测受当前方案限额约束；只有账户界面明确显示本次部署无新增费用才可继续，不能宣称无限量永久免费 |
 | 模型供应商 | 不调用 | 不运行连接测试、Rubric 生成、评分和 `run-stage14-e2e.sh` |
 | 本机组件 | 只使用现有 Mac、Homebrew、Redis、Python、Node.js、Tailscale CLI | 不购买软件或云主机；既有设备、网络和用电不计入“新增费用” |
 
-当前依据：[GitHub Actions 计费](https://docs.github.com/en/billing/concepts/product-billing/github-actions)、[Supabase Free 与额度](https://supabase.com/pricing)、[Supabase Free 不收费规则](https://supabase.com/docs/guides/platform/cost-control)、[Tailscale Personal 定价](https://tailscale.com/pricing)、[Funnel 方案范围](https://tailscale.com/docs/features/tailscale-funnel)、[UptimeRobot Free 定价](https://uptimerobot.com/pricing/)、[UptimeRobot Free 监控类型](https://help.uptimerobot.com/en/articles/11604710-who-should-use-uptimerobot-s-free-plan)、[UptimeRobot 维护窗口仅限付费](https://help.uptimerobot.com/en/articles/11360884-what-is-a-maintenance-window-and-how-to-use-it-in-uptimerobot)。定价可能变化，每次验收都必须重新看账户页面，不能只依赖本文。
+当前依据：[GitHub Actions 计费](https://docs.github.com/en/billing/concepts/product-billing/github-actions)、[Supabase Free 与额度](https://supabase.com/pricing)、[Supabase Free 项目暂停规则](https://supabase.com/docs/guides/platform/free-project-pausing)、[Tailscale Personal 定价](https://tailscale.com/pricing)、[Funnel 方案范围](https://tailscale.com/docs/features/tailscale-funnel)、[UptimeRobot Free 定价](https://uptimerobot.com/pricing/)、[UptimeRobot Keyword 配置](https://help.uptimerobot.com/en/articles/11358364-how-to-create-your-first-monitor-on-uptimerobot-quick-setup-guide)、[UptimeRobot 维护窗口仅限付费](https://help.uptimerobot.com/en/articles/11360884-what-is-a-maintenance-window-and-how-to-use-it-in-uptimerobot)、[Sites 公测限额](https://help.openai.com/en/articles/20001339-creating-and-managing-chatgpt-sites)。定价和公测限额可能变化，每次验收都必须重新看账户页面，不能只依赖本文。Supabase Free 在低活动 7 天后可能自动暂停，因此本阶段只验收零新增费用的个人低流量运行，不承诺持续在线 SLA。
 
 ## 验收节点
 
@@ -102,7 +102,7 @@ print "stage14_local_candidate_gate=true"
 
 ### 1.2 生成并推送新候选
 
-先执行 `git status --short`，人工确认只包含本轮 Funnel、零费用硬门禁、测试、验收文档和项目记录文件。文件清单以本节提交块为准；若出现其他文件，停止，不要提交。
+先执行 `git status --short`，人工确认只包含本轮免费 Keyword 监控、测试、验收文档和项目记录文件。文件清单以本节提交块为准；若出现其他文件，停止，不要提交。
 
 用户确认允许提交和推送后，先在终端 A执行提交块。提交成功后不要再次执行此块：
 
@@ -112,36 +112,24 @@ set -euo pipefail
 cd "/Users/a1-6/Documents/Paper Grading"
 test "$(git branch --show-current)" = "main"
 git add -- \
-  .github/workflows/ci.yml \
   ARCHITECTURE.md \
   CONTEXT.md \
   README.md \
-  backend/app/config.py \
-  backend/app/providers/dependencies.py \
-  backend/app/rubrics/dependencies.py \
-  backend/app/rubrics/service.py \
-  backend/app/workers/celery_app.py \
-  backend/tests/test_assignment_api.py \
-  backend/tests/test_assignment_service.py \
-  backend/tests/test_celery_runtime.py \
-  backend/tests/test_config.py \
-  backend/tests/test_provider_api.py \
   backend/tests/test_stage14_delivery_contract.py \
   backend/tests/test_stage14_local_deployment_scripts.py \
   docs/STAGE14_ACCEPTANCE.md \
+  docs/runbooks/deployment.md \
+  docs/runbooks/monitoring-and-incidents.md \
   findings.md \
   infra/local/production.env.example \
   infra/local/run-component.sh \
-  infra/local/stage14-funnel.sh \
   infra/local/update-production-env.sh \
-  infra/local/validate-release.sh \
-  infra/local/verify-runtime.sh \
   infra/local/watchdog.sh \
   lessons.md \
   progress.md \
   task_plan.md
 git diff --cached --check
-git commit -m "fix: enforce zero-cost stage 14 acceptance"
+git commit -m "fix: use free keyword monitoring for stage 14"
 candidate_sha=$(git rev-parse HEAD)
 print "candidate_sha=$candidate_sha"
 print "stage14_candidate_committed=true"
@@ -164,7 +152,7 @@ print "stage14_candidate_pushed=true"
 )
 ```
 
-最终 `candidate_sha` 必须是包含上述全部文件的最新提交；不得继续使用 `39b14ac` 或更旧 SHA 进入节点 2。
+最终 `candidate_sha` 必须是包含上述全部文件的最新提交；不得继续使用本轮修复之前的 SHA 进入节点 2。
 
 ### 1.3 核对新候选 CI
 
@@ -190,7 +178,7 @@ print "stage14_candidate_pushed=true"
 | Supabase SQL Editor | revision、队列和安全状态的只读 SQL | 目标生产项目 |
 | Supabase Dashboard | Auth、Storage、Network Restrictions | 目标生产项目 |
 | Codex Sites | 保存、私有部署、回滚前端版本 | 现有 Sites 项目 |
-| UptimeRobot | HTTP/Heartbeat 监控 | 当前个人账户 |
+| UptimeRobot | Keyword 监控 | 当前个人账户 |
 | Chrome/邮箱 | Tailscale 登录、Sites 页面、邀请和真实业务 | 用户本人操作 |
 
 所有终端命令都复制完整代码块执行。任一块没有打印预期标记或返回非 0，立即停止，不执行下一块。
@@ -473,7 +461,7 @@ where schemaname = 'storage' and tablename = 'objects';
 
 继续在 Supabase Dashboard → Storage 打开目标 bucket，目视确认：`Private`、文件上限 50MiB，允许 PDF、DOCX、JSON、XLSX。论文入口仍由应用限制为 20MiB。若角色 `password_configured=false` 或密码已经遗失，停止并在聊天中回复“需要单独授权设置对应 Worker 角色密码”；不要在 SQL Editor 直接写带明文密码的 `ALTER ROLE`。
 
-### 3.2 配置 Supabase Auth 和暂停的监控
+### 3.2 配置 Supabase Auth 和暂停的免费 Keyword 监控
 
 执行位置：Supabase Dashboard → Authentication → URL Configuration。
 
@@ -485,10 +473,10 @@ where schemaname = 'storage' and tablename = 'objects';
 执行位置：UptimeRobot。
 
 1. 再次确认账户显示 `Free`、费用为 0、监控数不超过 50；不要开始 Solo/Team 试用。
-2. 创建 HTTP(S) monitor：`<Funnel origin>/health/ready`，检查间隔固定为免费方案的 5 分钟，先保持暂停。
-3. 创建 Heartbeat/Cron monitor：期望间隔设为 5 分钟，grace period 设为 2 分钟，先保持暂停。本机 watchdog 每 60 秒发送一次，仍在该免费窗口内。
-4. 两个 monitor 都只选择免费邮件通知联系人；先用测试通知确认联系人可达。禁止 SMS、语音、自动充值和付费集成。
-5. Heartbeat URL只存入密码管理器，下一步由脚本隐藏输入，不要发送到聊天。
+2. 点 `Add New Monitor`，类型选择 `Keyword`，创建 1 个 Keyword monitor；不要选择普通 HTTP(S)、API 或 Heartbeat 类型。
+3. `Friendly name` 填 `Paper Grading API Ready`，URL 填 `<Funnel origin>/health/ready`，keyword 精确填 `"status":"ready"`，规则选择“找不到该 keyword 时告警”。
+4. 检查间隔选择免费方案的 5 分钟；只勾选已验证的免费邮件联系人，并让该联系人同时接收 Down 和 Up 通知；先用 `Test Notification` 确认邮件可达。
+5. 其余保持免费默认值并先暂停 monitor。任何带皇冠、`Upgrade`、试用或付款提示的 HTTP method、成功状态码、请求头、SSL/域名提醒、SMS、语音、延迟/重复通知和维护窗口都不要启用；若保存时要求升级就停止。
 
 ### 3.3 创建生产环境文件
 
@@ -516,7 +504,6 @@ print "stage14_environment_files_created=true"
 | `PROVIDER_MASTER_KEY` | 与数据库现有供应商密文匹配的原 Key，不得新生成 |
 | `FRONTEND_ORIGIN` | 正式 Sites origin，必须以 `https://` 开头且不带尾斜杠 |
 | `VITE_API_BASE_URL` | 正式 Funnel origin，必须以 `https://` 开头且不带尾斜杠 |
-| Heartbeat URL | UptimeRobot 新建的 Heartbeat URL |
 
 输入错误时不要手工编辑文件；取得授权后运行同一脚本的 `--replace`。
 
@@ -845,7 +832,7 @@ print "stage14_partial_launchd_rollback=true"
 
 1. Supabase Dashboard 按 3.2 保存的快照恢复旧 Site URL 和 Redirect URLs并重新读取确认；
 2. Codex Sites 私有部署 2.4 记录的“节点 2 前版本”，轮询到 `succeeded` 并确认 owner-only；
-3. 两个 UptimeRobot 监控保持暂停。
+3. UptimeRobot Keyword monitor 保持暂停。
 
 ### 3.8 强制重启和重新登录恢复
 
@@ -1198,21 +1185,21 @@ select
 
 ### 6.2 实际告警与恢复
 
-先在 UptimeRobot 启用 HTTP 和 Heartbeat 两个监控，等待两者显示正常，并确认免费邮件测试通知已送达。确认 6.1 全部归零后，在终端 D执行。停止导出 Worker 后，脚本最多等待 12 分钟；这是 5 分钟 Heartbeat、2 分钟 grace、免费方案检测和邮件投递余量。超时会自动恢复 Worker并判定失败。
+先在 UptimeRobot 启用 `Paper Grading API Ready` Keyword monitor，等待它显示 Up，并确认免费邮件测试通知已送达。确认 6.1 全部归零后，在终端 D执行。脚本会把 API LaunchAgent 完整卸载，使 `/health/ready` 无法访问；最多等待 12 分钟，覆盖 5 分钟免费检查、失败确认重试和邮件投递余量。超时会自动恢复 API 并判定失败。本机 watchdog 只做本地健康检查，不发送外部请求，也不会把已卸载的 API 自动拉起。
 
 ```zsh
 (
 set -euo pipefail
-plist="$HOME/Library/LaunchAgents/com.paper-grading.export.plist"
-restore_export() {
-  if ! launchctl print "gui/$UID/com.paper-grading.export" >/dev/null 2>&1; then
+plist="$HOME/Library/LaunchAgents/com.paper-grading.api.plist"
+restore_api() {
+  if ! launchctl print "gui/$UID/com.paper-grading.api" >/dev/null 2>&1; then
     launchctl bootstrap "gui/$UID" "$plist"
   fi
-  launchctl kickstart -k "gui/$UID/com.paper-grading.export"
+  launchctl kickstart -k "gui/$UID/com.paper-grading.api"
 }
-trap restore_export EXIT
+trap restore_api EXIT
 launchctl bootout "gui/$UID" "$plist"
-if ! read -t 720 -r "alert_result?收到 UptimeRobot 免费邮件告警后输入 I_RECEIVED_ALERT："; then
+if ! read -t 720 -r "alert_result?收到 UptimeRobot Keyword monitor 免费 Down 邮件后输入 I_RECEIVED_ALERT："; then
   print -u2 "stage14_uptimerobot_alert_timeout=true"
   exit 1
 fi
@@ -1220,35 +1207,35 @@ test "$alert_result" = "I_RECEIVED_ALERT"
 )
 ```
 
-无论成功、失败或按 `Control-C`，trap 都会尝试恢复导出 Worker。随后终端 D执行：
+无论成功、失败或按 `Control-C`，trap 都会尝试恢复 API。随后终端 D执行：
 
 ```zsh
 (
 set -euo pipefail
 runtime_root="$HOME/Library/Application Support/Paper Grading"
 current="$runtime_root/current"
-plist="$HOME/Library/LaunchAgents/com.paper-grading.export.plist"
-if ! launchctl print "gui/$UID/com.paper-grading.export" >/dev/null 2>&1; then
+plist="$HOME/Library/LaunchAgents/com.paper-grading.api.plist"
+if ! launchctl print "gui/$UID/com.paper-grading.api" >/dev/null 2>&1; then
   launchctl bootstrap "gui/$UID" "$plist"
 fi
-launchctl kickstart -k "gui/$UID/com.paper-grading.export"
+launchctl kickstart -k "gui/$UID/com.paper-grading.api"
 for _ in {1..60}; do
   if "$current/infra/local/verify-runtime.sh" >/dev/null 2>&1; then
-    print "stage14_export_worker_recovered=true"
+    print "stage14_api_recovered=true"
     exit 0
   fi
   sleep 2
 done
-print -u2 "stage14_export_worker_recovered=false"
+print -u2 "stage14_api_recovered=false"
 exit 1
 )
 ```
 
-在 UptimeRobot 等待并确认实际收到恢复通知。只看到监控配置不算通过。
+在 UptimeRobot 等待 Keyword monitor 重新显示 Up，并确认实际收到恢复邮件。只看到监控配置不算通过。
 
 ### 6.3 回滚 Mac 和 Sites
 
-UptimeRobot 免费方案不能建立维护窗口。先手工暂停 HTTP 和 Heartbeat 两个监控，确认页面均显示暂停，再次确认 6.1 队列为 0，然后终端 D执行：
+UptimeRobot 免费方案不能建立维护窗口。先手工暂停唯一的 Keyword monitor，确认页面显示暂停，再次确认 6.1 队列为 0，然后终端 D执行：
 
 ```zsh
 (
@@ -1408,7 +1395,7 @@ exit 1
 
 执行位置：Codex Sites。私有部署已经保存的回滚 Sites 版本，轮询到 `succeeded`；再次确认 owner-only。Chrome 只检查五个路径能加载和 API 健康，不登录、不写入。
 
-Sites 回滚的部署调用、状态轮询、owner-only 复核、五路径检查或 API 健康检查中任一项失败，都立即执行 6.4 的 Mac 候选恢复块，并私有部署候选 Sites 版本；候选部署也必须完成状态轮询、owner-only、五路径和 API 健康复核。两端恢复为候选且全部验证通过前保持两个监控暂停。
+Sites 回滚的部署调用、状态轮询、owner-only 复核、五路径检查或 API 健康检查中任一项失败，都立即执行 6.4 的 Mac 候选恢复块，并私有部署候选 Sites 版本；候选部署也必须完成状态轮询、owner-only、五路径和 API 健康复核。两端恢复为候选且全部验证通过前保持 Keyword monitor 暂停。
 
 执行位置：Supabase SQL Editor。
 
@@ -1568,12 +1555,12 @@ exit 1
 
 执行位置：Codex Sites。私有部署候选 Sites 版本，轮询到 `succeeded`，再次确认 owner-only，并复核五个路径和 API 健康。
 
-候选 Sites 的部署调用、状态轮询、owner-only、五路径或 API 健康复核中任一项失败，都立即把 Mac 按 6.3 的回滚块切回回滚 SHA，并私有部署回滚 Sites 版本；回滚 Sites 也必须完成相同复核。保持两个监控暂停，不创建第三个版本。
+候选 Sites 的部署调用、状态轮询、owner-only、五路径或 API 健康复核中任一项失败，都立即把 Mac 按 6.3 的回滚块切回回滚 SHA，并私有部署回滚 Sites 版本；回滚 Sites 也必须完成相同复核。保持 Keyword monitor 暂停，不创建第三个版本。
 
 最后：
 
 1. Chrome 再检查五个路径；
-2. UptimeRobot 手工恢复 HTTP 和 Heartbeat 两个监控；服务已恢复时，暂停后再恢复会触发新检查。等待两者都正常；
+2. UptimeRobot 手工恢复唯一的 Keyword monitor；等待它重新显示 Up；
 3. 重跑 6.1，确认队列仍为 0；
 4. Supabase Dashboard → Database → Network Restrictions 只读记录当前状态；若仍全网放行，写“用户接受的例外”，不能写“安全通过”；
 5. 生产配额仍关闭时，记录“活跃容量告警未启用”。

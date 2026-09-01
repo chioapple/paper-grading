@@ -68,8 +68,8 @@ lsof -nP -iTCP:6379 -sTCP:LISTEN
 交互设置。
 预期结果：
 
-- `.env.stage14-production` 包含 API、导出 Worker、Supabase、Redis、正式前端、
-  Funnel 和 UptimeRobot heartbeat 配置；
+- `.env.stage14-production` 包含 API、导出 Worker、Supabase、Redis、正式前端和
+  Funnel 配置；UptimeRobot Keyword monitor 只在其网页端保存；
 - `.env.stage14-grading-worker` 只覆盖评分 Worker 的 `DATABASE_URL`；
 - 两个文件权限均为 `0600`；
 - 评分 Worker 使用 `paper_grading_worker.<project-ref>`；
