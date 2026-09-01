@@ -177,14 +177,15 @@ def test_stage_fourteen_context_has_no_superseded_stage_five_blocker() -> None:
     assert "评分 Worker 丢失仍等待真实模型费用授权" not in context
 
 
-def test_stage_fourteen_ci_acceptance_records_two_exact_green_shas() -> None:
+def test_stage_fourteen_ci_acceptance_records_compatible_rollback_and_candidate_gate() -> None:
     acceptance = (PROJECT_ROOT / "docs/STAGE14_ACCEPTANCE.md").read_text(encoding="utf-8")
 
-    assert "39b14ac156e3c0b77085757b6851bf73f79d063c" in acceptance  # pragma: allowlist secret
-    assert "7302f1e5a16fd3b113149098a94238bbfe20acdb" in acceptance  # pragma: allowlist secret
+    assert "3b0a3ed057978a764248c5e306e09fae5b947260" in acceptance  # pragma: allowlist secret
+    assert "空 `ASSETS` 页面返回 200" in acceptance
+    assert "以本文件所在 `main` HEAD 为准" in acceptance
     assert "候选 SHA CI" in acceptance
     assert "回滚 SHA CI" in acceptance
-    assert acceptance.count("8/8 通过") >= 2
+    assert "必须由 1.3 精确核对 8/8" in acceptance
     assert "gh repo view" not in acceptance
     assert "gh run" not in acceptance
 

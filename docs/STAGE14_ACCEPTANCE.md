@@ -15,12 +15,13 @@
 |---|---|---|
 | 本地预部署门禁 | 2026-08-31：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
 | 阶段 14 聚焦后端测试 | 87 通过、0 失败 | 相关代码变化后重跑 |
-| Sites 构建与路由测试 | 2 通过、0 失败 | 前端或 Sites 配置变化后重跑 |
+| Sites 构建与路由测试 | 3 通过、0 失败；包含外部 `ASSETS` 始终 404 的回归 | 前端或 Sites 配置变化后重跑 |
 | 历史候选 SHA CI | `71e377c251958fdd943a5f982bd9db4741a98db2`：8/8 通过，但不含最新部署脚本修复 | 不得作为最终候选 |
 | 失败候选 SHA CI | `27c67ac`：前 7 项通过，第 8 项 Git SHA 高熵误判；已在本地修复 | 不得使用或 rerun |
 | 上一绿色候选 SHA CI | `d99dd5f`：8/8 通过，但仍会预建空 Tailscale 状态 | 不得作为最终候选 |
 | 上一完整绿色 SHA CI | `39b14ac156e3c0b77085757b6851bf73f79d063c`：精确 SHA、8/8 通过，但不含本轮 Funnel 和零费用硬门禁 | 不得作为最终候选 |
-| 回滚 SHA CI | `7302f1e5a16fd3b113149098a94238bbfe20acdb`：8/8 通过 | 不需要 |
+| Sites 兼容回滚 SHA CI | `3b0a3ed057978a764248c5e306e09fae5b947260`：8/8 通过且空 `ASSETS` 页面返回 200 | 不需要 |
+| 当前候选 SHA CI | 以本文件所在 `main` HEAD 为准，必须由 1.3 精确核对 8/8 | 每次提交后都要重跑 |
 | PostgreSQL、Auth、Storage、Redis、Worker、供应商、100 篇结构证据 | 已完成 | 禁止在生产重复做破坏性测试或 100 次模型调用 |
 | 生产部署、零费用只读验收、告警、回滚 | 未执行 | 按下列节点执行 |
 
@@ -348,7 +349,7 @@ print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
 test -z "$(git status --porcelain)"
 remote_sha=$(git -c http.version=HTTP/1.1 ls-remote origin refs/heads/main | /usr/bin/cut -f1)
 test "$candidate_sha" = "$remote_sha"
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
+rollback_sha="3b0a3ed057978a764248c5e306e09fae5b947260" # pragma: allowlist secret
 read -r "VITE_API_BASE_URL?输入刚记录的 Funnel HTTPS origin："
 read -r "VITE_SUPABASE_URL?输入生产 Supabase 项目 URL："
 read -rs "VITE_SUPABASE_PUBLISHABLE_KEY?输入 Supabase publishable key："; print
@@ -401,7 +402,7 @@ Codex 必须按以下顺序执行：
 1. 读取 `frontend/.openai/hosting.json`，复用已有 `project_id`，不得新建项目。
 2. 在改动前记录当前正在部署的 Sites 版本号、部署状态和 owner-only 状态，标记为“节点 2 前版本”。
 3. 确认当前用户是 owner，访问范围仅本人。
-4. 回滚版本只能从本机封存目录 `~/Library/Application Support/Paper Grading/releases/7302f1e5a16fd3b113149098a94238bbfe20acdb/frontend` 构建；候选版本只能从 `~/Library/Application Support/Paper Grading/releases/<候选完整 SHA>/frontend` 构建。禁止读取项目当前工作树。
+4. 回滚版本只能从本机封存目录 `~/Library/Application Support/Paper Grading/releases/3b0a3ed057978a764248c5e306e09fae5b947260/frontend` 构建；候选版本只能从 `~/Library/Application Support/Paper Grading/releases/<候选完整 SHA>/frontend` 构建。禁止读取项目当前工作树。
 5. 从回滚封存目录保存一个 Sites 版本，再从候选封存目录保存一个不同版本。
 6. 私有部署候选版本，轮询到 `succeeded`；禁止公开部署。
 7. 本机记录“SHA ↔ Sites 版本号”及“节点 2 前版本号”；不记录 source credential 或 bypass token。
@@ -703,7 +704,7 @@ test "$(/usr/bin/stat -f '%Lp' "$candidate_file")" = "600"
 test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
 IFS= read -r candidate_sha <"$candidate_file"
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
+rollback_sha="3b0a3ed057978a764248c5e306e09fae5b947260" # pragma: allowlist secret
 validator="$current/infra/local/validate-release.sh"
 for release_sha in "$candidate_sha" "$rollback_sha"; do
   "$validator" "$release_sha" --env-dir "$env_dir"
@@ -1258,7 +1259,7 @@ test "$(/usr/bin/stat -f '%Lp' "$candidate_file")" = "600"
 test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
 IFS= read -r candidate_sha <"$candidate_file"
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
+rollback_sha="3b0a3ed057978a764248c5e306e09fae5b947260" # pragma: allowlist secret
 manager="$runtime_root/shared/bin/switch-release.sh"
 env_dir="$runtime_root/shared/env"
 source "$env_dir/production.env"
@@ -1430,7 +1431,7 @@ test "$(/usr/bin/stat -f '%Lp' "$candidate_file")" = "600"
 test "$(/usr/bin/stat -f '%z' "$candidate_file")" = "41"
 IFS= read -r candidate_sha <"$candidate_file"
 print -rn -- "$candidate_sha" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'
-rollback_sha="7302f1e5a16fd3b113149098a94238bbfe20acdb" # pragma: allowlist secret
+rollback_sha="3b0a3ed057978a764248c5e306e09fae5b947260" # pragma: allowlist secret
 manager="$runtime_root/shared/bin/switch-release.sh"
 env_dir="$runtime_root/shared/env"
 source "$env_dir/production.env"
