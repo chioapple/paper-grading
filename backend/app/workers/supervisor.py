@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 from types import FrameType
 
 CELERY_APPLICATION = "app.workers.celery_app:celery_app"
@@ -13,8 +15,15 @@ GRADING_QUEUE = "paper_grading.grading"
 MAINTENANCE_QUEUE = "paper_grading.maintenance"
 
 
-def worker_commands(python_executable: str = sys.executable) -> tuple[tuple[str, ...], ...]:
+def worker_commands(
+    python_executable: str = sys.executable,
+    *,
+    beat_schedule_filename: str,
+) -> tuple[tuple[str, ...], ...]:
     """返回两个互不共享执行槽的 Worker 命令。"""
+
+    if not Path(beat_schedule_filename).is_absolute():
+        raise ValueError("beat_schedule_filename_must_be_absolute")
 
     common = (
         python_executable,
@@ -34,6 +43,7 @@ def worker_commands(python_executable: str = sys.executable) -> tuple[tuple[str,
         f"--queues={MAINTENANCE_QUEUE}",
         "--hostname=maintenance@%h",
         "--beat",
+        f"--schedule={beat_schedule_filename}",
     )
     return grading, maintenance
 
@@ -52,7 +62,12 @@ def main() -> int:
     previous_sigterm = signal.signal(signal.SIGTERM, request_shutdown)
     exit_code = 1
     try:
-        children = [subprocess.Popen(command) for command in worker_commands()]
+        children = [
+            subprocess.Popen(command)
+            for command in worker_commands(
+                beat_schedule_filename=os.environ["CELERYBEAT_SCHEDULE_FILENAME"]
+            )
+        ]
         while requested_signal is None:
             for child in children:
                 child_exit_code = child.poll()

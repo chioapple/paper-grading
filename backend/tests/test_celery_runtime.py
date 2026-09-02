@@ -136,7 +136,11 @@ def test_zero_cost_worker_rejects_a_preexisting_grading_task_before_database_acc
 def test_worker_processes_isolate_grading_from_maintenance_execution_slots() -> None:
     from app.workers.supervisor import worker_commands
 
-    grading_command, maintenance_command = worker_commands("/test/python")
+    beat_schedule_filename = "/shared/state/celerybeat-schedule"
+    grading_command, maintenance_command = worker_commands(
+        "/test/python",
+        beat_schedule_filename=beat_schedule_filename,
+    )
 
     assert grading_command[:3] == ("/test/python", "-m", "celery")
     assert "--queues=paper_grading.grading" in grading_command
@@ -147,6 +151,18 @@ def test_worker_processes_isolate_grading_from_maintenance_execution_slots() -> 
     assert "--queues=paper_grading.maintenance" in maintenance_command
     assert "--queues=paper_grading.grading" not in maintenance_command
     assert "--beat" in maintenance_command
+    assert f"--schedule={beat_schedule_filename}" in maintenance_command
+    assert all(not argument.startswith("--schedule=") for argument in grading_command)
+
+
+def test_worker_supervisor_rejects_a_relative_beat_schedule_path() -> None:
+    from app.workers.supervisor import worker_commands
+
+    with pytest.raises(ValueError, match="beat_schedule_filename_must_be_absolute"):
+        worker_commands(
+            "/test/python",
+            beat_schedule_filename="celerybeat-schedule",
+        )
 
 
 def test_local_grading_worker_uses_the_isolated_worker_supervisor() -> None:

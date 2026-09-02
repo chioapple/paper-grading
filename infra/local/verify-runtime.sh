@@ -57,6 +57,19 @@ if prefixes != ["exports", "grading", "maintenance"]:
     raise SystemExit("stage14_worker_set_invalid")
 '
 
+beat_schedule_filename="$(stage14_state_dir)/celerybeat-schedule"
+process_commands=$(/bin/ps -axo command=)
+beat_process_found=false
+while IFS= read -r process_command; do
+  if [[ "$process_command" == *"$current_root/.venv/bin/python -m celery"* &&
+        "$process_command" == *"--hostname=maintenance@%h"* &&
+        "$process_command" == *"--schedule=$beat_schedule_filename"* ]]; then
+    beat_process_found=true
+    break
+  fi
+done <<<"$process_commands"
+test "$beat_process_found" = true
+
 for queue in paper_grading.grading paper_grading.maintenance paper_grading.exports; do
   /opt/homebrew/bin/redis-cli -u "$REDIS_URL" LLEN "$queue" >/dev/null
 done

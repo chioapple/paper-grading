@@ -505,3 +505,10 @@
 - 后续 Bug Review 又发现部署、监控和回滚手册仍从仓库工作区或旧环境文件执行；现已统一改为
   封存的 `current` release 与 `shared/env`。由于回滚 SHA 早于模型调用硬门禁，回滚期间只启动
   API 和导出 Worker，评分/维护 Worker 保持停止。完成最终门禁后重新生成候选并精确取得 CI 8/8。
+- 节点 3.7 首次安装因维护 Worker 的 Celery Beat 尝试在只读 release 写相对状态文件而失败，6 个
+  LaunchAgent 已按首次安装回滚流程清理。节点 2 前 Sites 版本 6 已重新私有部署，状态 `succeeded`
+  且仅当前 owner，UptimeRobot 继续暂停。
+- 使用 TDD 将共享状态绝对路径显式传给维护 Worker 的 `--schedule`，评分 Worker不携带该参数；
+  `verify-runtime.sh` 新增真实进程参数核验，防止 Redis 心跳掩盖 Beat 状态文件写入失败。等待完整
+  本地门禁、提交推送和新候选 CI 8/8 后从 2.3 重做。当前相关回归 38、完整后端 519、Ruff、格式、
+  严格 mypy 和预部署门禁全部通过，失败 0。

@@ -1,15 +1,13 @@
 # CONTEXT
 
-- 当前正在做什么：阶段 14 前一候选 `eb2ca93571e4c9fa8649af4b968c32ad11f18ef2` 已完成
-  Funnel、双 release、Sites 私有部署和节点 2.5 页面检查；节点 3 尚未开始，生产环境文件和
-  LaunchAgent 均不存在。用户实际 UptimeRobot Free 页面虽与帮助页存在出入，但当前账户界面下可
-  稳定执行的免费方案只有一个 5 分钟 Keyword monitor；因此本轮移除全部 Heartbeat URL、环境变量
-  和外部 ping，只保留对 `/health/ready` 响应体中 `"status":"ready"` 的免费关键字检查，并把
-  `smoke-test.md` 从真实 E2E 改为纯只读页面检查；部署、监控、冒烟和回滚手册统一从封存的
-  `current` release 与 `shared/env` 读取运行环境，旧回滚 SHA 期间只允许 API 和导出 Worker。
-  当前本地门禁 `stage14_predeployment_gate=true`，阶段 14 聚焦后端测试 `25 passed, 10 deselected`。
-  下一步是完成最终门禁、提交并推送新候选，待新 SHA 取得 CI
-  8/8 后重做受 SHA 影响的 2.3—2.5。生产数据库未迁移，模型调用、业务写入、实际告警和回滚均未执行。
+- 当前正在做什么：阶段 14 节点 3.7 首次安装暴露维护 Worker 的 Celery Beat 仍尝试在只读 release
+  写相对路径 `celerybeat-schedule`，导致 LaunchAgent 验证失败；首次安装已完整回滚。根因是启动脚本
+  虽设置 `CELERYBEAT_SCHEDULE_FILENAME`，Supervisor 没有把它传给 Celery。当前修复把共享状态绝对
+  路径显式传入 `--schedule`，并让 `verify-runtime.sh` 核对真实进程参数。节点 2 前 Sites 版本 6 已
+  重新私有部署，部署状态 `succeeded`，访问范围仅当前 owner；UptimeRobot 保持暂停。相关回归 38、
+  完整后端 519、Ruff、格式、严格 mypy 和预部署门禁均通过。下一步提交并推送新候选，待精确 CI
+  8/8 后从 2.3 重新准备 release 和 Sites 版本。模型调用、
+  自动清理、备份、恢复演练和生产配额仍保持关闭。
 - 最终验收信号：用户于 2026-07-26 明确确认 `docs/STAGE12_ACCEPTANCE.md` 全部步骤执行通过，阶段 12 已完成。
 - 阶段 12 最终迁移版本：`20260722_0017`；用户确认真实项目前向迁移和验收均已通过，真实项目不得为验收回退。
 - 阶段 12 本地代码：`0017` 原子冻结模型参数、批次和 `export_items`；导出进程只接受专用最小角色的 `EXPORT_DATABASE_URL`。同一快照生成完全相同的文件名、XLSX 字节和 SHA-256，600 秒租约长于 Worker 硬时限。完成竞争失败后，只有当前令牌能先原子转为 failed 才可删除本次新对象，失租旧 Worker 不删除；连续软超时或三次 Worker 丢失会持久化为明确失败，不会永久卡在 running。

@@ -239,6 +239,9 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     runtime = (PROJECT_ROOT / "infra/local/verify-runtime.sh").read_text(encoding="utf-8")
     watchdog = (PROJECT_ROOT / "infra/local/watchdog.sh").read_text(encoding="utf-8")
     component_runner = (PROJECT_ROOT / "infra/local/run-component.sh").read_text(encoding="utf-8")
+    worker_supervisor = (PROJECT_ROOT / "backend/app/workers/supervisor.py").read_text(
+        encoding="utf-8"
+    )
     predeployment_gate = (PROJECT_ROOT / "infra/local/stage14-predeployment-gate.sh").read_text(
         encoding="utf-8"
     )
@@ -262,6 +265,8 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "stage14_local_runtime_verified=true" in runtime
     assert 'test "${PROVIDER_CALLS_ENABLED:-}" = "false"' in runtime
     assert "stage14_state_dir" in runtime
+    assert '"--hostname=maintenance@%h"' in runtime
+    assert '"--schedule=$beat_schedule_filename"' in runtime
     assert "funnel status --json" in runtime
     assert 'prefixes != ["exports", "grading", "maintenance"]' in runtime
     assert "http://127.0.0.1:8000/health/ready" in watchdog
@@ -270,6 +275,8 @@ def test_local_deployment_scripts_reference_shared_runtime_boundaries() -> None:
     assert "UPTIMEROBOT_HEARTBEAT_URL" not in watchdog
     assert "shared/env/production.env" in component_runner
     assert "CELERYBEAT_SCHEDULE_FILENAME" in component_runner
+    assert 'os.environ["CELERYBEAT_SCHEDULE_FILENAME"]' in worker_supervisor
+    assert 'f"--schedule={beat_schedule_filename}"' in worker_supervisor
     assert "stage14_predeployment_gate=true" in predeployment_gate
     assert "--self-check" in predeployment_gate
     assert "releases/$sha" in release_preparer

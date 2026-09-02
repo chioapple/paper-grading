@@ -13,8 +13,8 @@
 
 | 项目 | 结果 | 是否还要重跑 |
 |---|---|---|
-| 本地预部署门禁 | 2026-08-31：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
-| 阶段 14 聚焦后端测试 | 87 通过、0 失败 | 相关代码变化后重跑 |
+| 本地预部署门禁 | 2026-09-02：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
+| 阶段 14 相关后端回归 | 38 通过、0 失败；完整后端 519 通过、0 失败 | 相关代码变化后重跑 |
 | Sites 构建与路由测试 | 3 通过、0 失败；包含外部 `ASSETS` 始终 404 的回归 | 前端或 Sites 配置变化后重跑 |
 | 历史候选 SHA CI | `71e377c251958fdd943a5f982bd9db4741a98db2`：8/8 通过，但不含最新部署脚本修复 | 不得作为最终候选 |
 | 失败候选 SHA CI | `27c67ac`：前 7 项通过，第 8 项 Git SHA 高熵误判；已在本地修复 | 不得使用或 rerun |
@@ -22,8 +22,9 @@
 | 上一完整绿色 SHA CI | `39b14ac156e3c0b77085757b6851bf73f79d063c`：精确 SHA、8/8 通过，但不含本轮 Funnel 和零费用硬门禁 | 不得作为最终候选 |
 | Sites 兼容回滚 SHA CI | `3b0a3ed057978a764248c5e306e09fae5b947260`：8/8 通过且空 `ASSETS` 页面返回 200 | 不需要 |
 | 当前候选 SHA CI | 以本文件所在 `main` HEAD 为准，必须由 1.3 精确核对 8/8 | 每次提交后都要重跑 |
+| 节点 3.7 首次安装 | 旧候选的维护 Worker 把 Beat 状态写到只读 release，安装已回滚；Sites 节点 2 前版本 6 已重新私有部署，状态 `succeeded` 且仅 owner | 修复后从 2.3 重新准备新候选 |
 | PostgreSQL、Auth、Storage、Redis、Worker、供应商、100 篇结构证据 | 已完成 | 禁止在生产重复做破坏性测试或 100 次模型调用 |
-| 生产部署、零费用只读验收、告警、回滚 | 未执行 | 按下列节点执行 |
+| 生产部署、零费用只读验收、告警、回滚 | 节点 3.7 失败后已停止业务进程并恢复节点 2 前 Sites；后续节点未执行 | 新候选 CI 8/8 后从 2.3 继续 |
 
 阶段 14 仍是“进行中”。本地与 CI 通过不代表生产验收完成。
 
@@ -89,8 +90,8 @@ print "stage14_local_candidate_gate=true"
 | 检查 | 通过 | 失败 |
 |---|---:|---:|
 | 本地预部署门禁 | 1 | 0 |
-| 阶段 14 聚焦后端测试 | 87 | 0 |
-| 完整后端回归 | 513 | 0 |
+| 阶段 14 相关后端回归 | 38 | 0 |
+| 完整后端回归 | 519 | 0 |
 | 前端单元测试 | 70 | 0 |
 | Sites 构建与路由测试 | 2 | 0 |
 | 桌面与手机浏览器测试 | 2 | 0 |
@@ -102,7 +103,7 @@ print "stage14_local_candidate_gate=true"
 
 ### 1.2 生成并推送新候选
 
-先执行 `git status --short`，人工确认只包含本轮免费 Keyword 监控、测试、验收文档和项目记录文件。文件清单以本节提交块为准；若出现其他文件，停止，不要提交。
+先执行 `git status --short`，人工确认只包含本轮 Celery Beat 状态路径修复、测试、验收文档和项目记录文件。文件清单以本节提交块为准；若出现其他文件，停止，不要提交。
 
 用户确认允许提交和推送后，先在终端 A执行提交块。提交成功后不要再次执行此块：
 
@@ -112,26 +113,18 @@ set -euo pipefail
 cd "/Users/a1-6/Documents/Paper Grading"
 test "$(git branch --show-current)" = "main"
 git add -- \
-  ARCHITECTURE.md \
   CONTEXT.md \
-  README.md \
+  backend/app/workers/supervisor.py \
+  backend/tests/test_celery_runtime.py \
   backend/tests/test_stage14_delivery_contract.py \
-  backend/tests/test_stage14_local_deployment_scripts.py \
   docs/STAGE14_ACCEPTANCE.md \
-  docs/runbooks/deployment.md \
-  docs/runbooks/monitoring-and-incidents.md \
-  docs/runbooks/rollback.md \
-  docs/runbooks/smoke-test.md \
   findings.md \
-  infra/local/production.env.example \
-  infra/local/run-component.sh \
-  infra/local/update-production-env.sh \
-  infra/local/watchdog.sh \
+  infra/local/verify-runtime.sh \
   lessons.md \
   progress.md \
   task_plan.md
 git diff --cached --check
-git commit -m "fix: use free keyword monitoring for stage 14"
+git commit -m "fix: persist celery beat state outside release"
 candidate_sha=$(git rev-parse HEAD)
 print "candidate_sha=$candidate_sha"
 print "stage14_candidate_committed=true"
@@ -768,6 +761,12 @@ PY
 
 ### 3.7 将 Tailscale 交给 LaunchAgent 并启动全部服务
 
+本候选把 Celery Beat 状态明确写入
+`~/Library/Application Support/Paper Grading/shared/state/celerybeat-schedule`。下面调用的
+`verify-runtime.sh` 不只检查 Worker 心跳，还会核对维护 Worker 的真实进程参数含该绝对
+`--schedule` 路径；只设置同名环境变量不算通过。release 目录保持只读，里面不得出现
+`celerybeat-schedule`。
+
 先在终端 B停止临时 daemon：
 
 ```zsh
@@ -800,6 +799,9 @@ print -u2 "stage14_launchd_initial_runtime=false"
 exit 1
 )
 ```
+
+看到 `stage14_launchd_initial_runtime=true` 才算通过。若日志出现
+`Permission denied: 'celerybeat-schedule'`，说明仍在运行旧候选，立即执行下面的回滚块并停止。
 
 若失败，立即执行：
 

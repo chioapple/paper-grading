@@ -329,3 +329,14 @@
 - 节点 4—6 没有新增模型、数据库写入或付费监控动作。绝对总成本为 0 仍不能由本架构保证：Sites
   依赖现有 ChatGPT 方案并受公测限额约束，Mac、网络和用电也是既有成本；可严格保证的是本阶段
   不购买、不升级、不调用模型且新增费用为 0。
+
+## 2026-09-02 LaunchAgent 首次安装回滚
+
+- 节点 3.7 的 API、导出 Worker、评分 Worker和维护 Worker均能启动，但维护 Worker 的 Beat 报
+  `Permission denied: 'celerybeat-schedule'`。数据库只读探针已通过，因此这不是数据库密码问题。
+- `run-component.sh` 设置了共享状态路径环境变量，但 Supervisor 启动 Celery 时没有传 `--schedule`；
+  Celery 因而回退到当前工作目录的相对默认值，而封存 release 按设计只读。
+- 修复后 Supervisor 必须把共享状态绝对路径显式传给维护 Worker，评分 Worker不得获得该参数；
+  `verify-runtime.sh` 同时检查真实进程参数，避免仅凭三个 Worker 的 Redis ping 误判成功。
+- 失败安装已按 3.7 回滚。Sites 节点 2 前版本 6 已重新私有部署，状态 `succeeded` 且仅当前 owner；
+  新候选 CI 8/8 前不恢复节点 3。

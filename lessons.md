@@ -100,3 +100,6 @@
 - 阶段 14 改成零新增费用后，不能只改主验收文档；`deployment.md`、`monitoring-and-incidents.md`
   和 `smoke-test.md` 也必须一起去掉真实 E2E、Heartbeat URL 和其他付费监控假设，否则节点 4 之后会
   自相矛盾。
+- Celery Beat 的持久状态路径必须作为 `--schedule=<共享状态绝对路径>` 显式传给真实维护进程；仅导出
+  一个 Celery 不读取的环境变量不算配置成功。运行门禁必须检查实际进程参数，防止 Worker 心跳掩盖
+  release 目录只读导致的 Beat 崩溃。
