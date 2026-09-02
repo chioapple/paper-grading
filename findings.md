@@ -340,3 +340,13 @@
   `verify-runtime.sh` 同时检查真实进程参数，避免仅凭三个 Worker 的 Redis ping 误判成功。
 - 失败安装已按 3.7 回滚。Sites 节点 2 前版本 6 已重新私有部署，状态 `succeeded` 且仅当前 owner；
   新候选 CI 8/8 前不恢复节点 3。
+
+## 2026-09-03 生产 API 数据库就绪超时
+
+- 候选 `9167085ae57f40843dc0f2e66d1b4fb756846348` 的六个 LaunchAgent 已加载，API `/health/live`
+  正常，Celery Beat 和三个 Worker 正常；只有 `/health/ready` 持续返回数据库不可用。
+- 同一生产 URL 和应用 Settings 下的独立 `SELECT 1` 成功，但首次连接约需 8 秒；应用就绪探针默认
+  2 秒并在超时时取消连接，因此连接池永远无法完成第一次预热。根因不是密码、URL、Tailscale、
+  LaunchAgent、Celery Beat 或数据库损坏。
+- 阶段 14 生产 API 启动器现对缺失配置采用 15 秒，并让环境生成器显式写入同一值；其他环境仍保留
+  应用 2 秒默认值，显式合法配置仍可覆盖。该修复不增加自动重试或降级。

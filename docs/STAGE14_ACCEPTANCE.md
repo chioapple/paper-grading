@@ -13,7 +13,7 @@
 
 | 项目 | 结果 | 是否还要重跑 |
 |---|---|---|
-| 本地预部署门禁 | 2026-09-02：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
+| 本地预部署门禁 | 2026-09-03：`stage14_predeployment_gate=true` | 部署代码变化后重跑 |
 | 阶段 14 相关后端回归 | 38 通过、0 失败；完整后端 519 通过、0 失败 | 相关代码变化后重跑 |
 | Sites 构建与路由测试 | 3 通过、0 失败；包含外部 `ASSETS` 始终 404 的回归 | 前端或 Sites 配置变化后重跑 |
 | 历史候选 SHA CI | `71e377c251958fdd943a5f982bd9db4741a98db2`：8/8 通过，但不含最新部署脚本修复 | 不得作为最终候选 |
@@ -22,9 +22,9 @@
 | 上一完整绿色 SHA CI | `39b14ac156e3c0b77085757b6851bf73f79d063c`：精确 SHA、8/8 通过，但不含本轮 Funnel 和零费用硬门禁 | 不得作为最终候选 |
 | Sites 兼容回滚 SHA CI | `3b0a3ed057978a764248c5e306e09fae5b947260`：8/8 通过且空 `ASSETS` 页面返回 200 | 不需要 |
 | 当前候选 SHA CI | 以本文件所在 `main` HEAD 为准，必须由 1.3 精确核对 8/8 | 每次提交后都要重跑 |
-| 节点 3.7 首次安装 | 旧候选的维护 Worker 把 Beat 状态写到只读 release，安装已回滚；Sites 节点 2 前版本 6 已重新私有部署，状态 `succeeded` 且仅 owner | 修复后从 2.3 重新准备新候选 |
+| 节点 3.7 再次安装 | 候选 `9167085ae57f40843dc0f2e66d1b4fb756846348` 的 Beat 已正常，但 API 首次连接 Session Pooler 约需 8 秒，2 秒就绪超时导致持续 503；已停止在 `stage14_launchd_initial_runtime=false` | 新候选 CI 8/8 后从 2.3 重新准备并重做 2.4—3.7 |
 | PostgreSQL、Auth、Storage、Redis、Worker、供应商、100 篇结构证据 | 已完成 | 禁止在生产重复做破坏性测试或 100 次模型调用 |
-| 生产部署、零费用只读验收、告警、回滚 | 节点 3.7 失败后已停止业务进程并恢复节点 2 前 Sites；后续节点未执行 | 新候选 CI 8/8 后从 2.3 继续 |
+| 生产部署、零费用只读验收、告警、回滚 | 当前停止在节点 3.7，`stage14_launchd_initial_runtime=false`；3.8 及后续节点未执行 | 先按 3.7 失败块恢复，再在新候选 CI 8/8 后从 2.3 继续 |
 
 阶段 14 仍是“进行中”。本地与 CI 通过不代表生产验收完成。
 
@@ -103,7 +103,7 @@ print "stage14_local_candidate_gate=true"
 
 ### 1.2 生成并推送新候选
 
-先执行 `git status --short`，人工确认只包含本轮 Celery Beat 状态路径修复、测试、验收文档和项目记录文件。文件清单以本节提交块为准；若出现其他文件，停止，不要提交。
+先执行 `git status --short`，人工确认只包含本轮生产 API 数据库就绪超时修复、测试、验收文档和项目记录文件。文件清单以本节提交块为准；若出现其他文件，停止，不要提交。
 
 用户确认允许提交和推送后，先在终端 A执行提交块。提交成功后不要再次执行此块：
 
@@ -114,17 +114,18 @@ cd "/Users/a1-6/Documents/Paper Grading"
 test "$(git branch --show-current)" = "main"
 git add -- \
   CONTEXT.md \
-  backend/app/workers/supervisor.py \
-  backend/tests/test_celery_runtime.py \
   backend/tests/test_stage14_delivery_contract.py \
+  backend/tests/test_stage14_local_deployment_scripts.py \
   docs/STAGE14_ACCEPTANCE.md \
   findings.md \
-  infra/local/verify-runtime.sh \
+  infra/local/production.env.example \
+  infra/local/run-component.sh \
+  infra/local/update-production-env.sh \
   lessons.md \
   progress.md \
   task_plan.md
 git diff --cached --check
-git commit -m "fix: persist celery beat state outside release"
+git commit -m "fix: allow production database readiness latency"
 candidate_sha=$(git rev-parse HEAD)
 print "candidate_sha=$candidate_sha"
 print "stage14_candidate_committed=true"
@@ -502,7 +503,9 @@ print "stage14_environment_files_created=true"
 
 输入错误时不要手工编辑文件；取得授权后运行同一脚本的 `--replace`。
 
-脚本会固定写入 `PROVIDER_CALLS_ENABLED=false`。它不提供把该值改为 `true` 的提示；阶段 14 期间也禁止手工修改。
+脚本会固定写入 `PROVIDER_CALLS_ENABLED=false` 和 `READINESS_DATABASE_TIMEOUT_SECONDS=15.0`。后者只放宽生产 API 的数据库首次就绪等待，不增加重试，也不改变数据库连接地址或密码。脚本不提供把模型调用开关改为 `true` 的提示；阶段 14 期间也禁止手工修改。
+
+当前重试若 `shared/env` 已在此前 3.3 正确生成，不要为本轮超时修复再次执行 `--replace`，也不需要重新输入任何密码。新候选的 API 启动器会在该字段缺失时自动采用 15 秒；以后重新生成环境文件时才会把它显式写入。
 
 随后仍在终端 A验证权限：
 
@@ -767,6 +770,10 @@ PY
 `--schedule` 路径；只设置同名环境变量不算通过。release 目录保持只读，里面不得出现
 `celerybeat-schedule`。
 
+生产 API 会使用 15 秒数据库就绪超时。真实 Session Pooler 首次连接曾约需 8 秒；应用原来的
+2 秒默认值会在连接完成前主动取消探针，使 `/health/live` 为 200 但 `/health/ready` 持续为 503。
+该修复只延长单次就绪探针等待，不掩盖认证、网络或数据库错误；120 秒的安装轮询仍是最终门禁。
+
 先在终端 B停止临时 daemon：
 
 ```zsh
@@ -802,6 +809,8 @@ exit 1
 
 看到 `stage14_launchd_initial_runtime=true` 才算通过。若日志出现
 `Permission denied: 'celerybeat-schedule'`，说明仍在运行旧候选，立即执行下面的回滚块并停止。
+若只看到 `/health/live` 正常而 `/health/ready` 持续 503，也不得继续；先确认当前 release 是包含
+15 秒生产就绪超时的新候选，禁止用反复重启、改密码或临时 `launchctl setenv` 代替候选修复。
 
 若失败，立即执行：
 

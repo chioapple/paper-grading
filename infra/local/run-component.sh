@@ -31,6 +31,8 @@ test "${PROVIDER_CALLS_ENABLED:-}" = "false"
 
 case "${1:-}" in
   api)
+    # Supabase Session Pooler 的首次连接可能超过应用默认的 2 秒。
+    export READINESS_DATABASE_TIMEOUT_SECONDS="${READINESS_DATABASE_TIMEOUT_SECONDS:-15.0}"
     unset EXPORT_DATABASE_URL
     unset VITE_API_BASE_URL
     unset VITE_SUPABASE_URL

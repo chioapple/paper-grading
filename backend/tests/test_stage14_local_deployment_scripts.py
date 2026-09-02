@@ -567,6 +567,7 @@ def test_environment_writer_shell_quotes_every_user_supplied_value(tmp_path: Pat
             "-c",
             'set -euo pipefail; source "$PRODUCTION_ENV"; '
             'test "$DATABASE_URL" = "$EXPECTED_DATABASE_URL"; '
+            'test "$READINESS_DATABASE_TIMEOUT_SECONDS" = 15.0; '
             'test "$SUPABASE_PUBLISHABLE_KEY" = "$EXPECTED_PUBLISHABLE_KEY"; '
             'test "$PROVIDER_CALLS_ENABLED" = false; '
             'source "$GRADING_ENV"; '

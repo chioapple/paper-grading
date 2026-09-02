@@ -112,6 +112,7 @@ cat >"$staging_dir/production.env" <<EOF
 APP_ENV=production
 DATABASE_URL=$database_url_q
 EXPORT_DATABASE_URL=$export_database_url_q
+READINESS_DATABASE_TIMEOUT_SECONDS=15.0
 REDIS_URL=redis://127.0.0.1:6379/0
 SUPABASE_URL=$supabase_url_q
 SUPABASE_PUBLISHABLE_KEY=$supabase_publishable_key_q

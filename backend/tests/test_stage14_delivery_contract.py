@@ -86,6 +86,10 @@ def test_sites_and_local_deployment_keep_public_and_secret_boundaries_separate()
     api_section = component_runner.split("  api)", 1)[1].split("  ;;", 1)[0]
     grading_section = component_runner.split("  grading)", 1)[1].split("  ;;", 1)[0]
     export_section = component_runner.split("  export)", 1)[1].split("  ;;", 1)[0]
+    assert (
+        'export READINESS_DATABASE_TIMEOUT_SECONDS="${READINESS_DATABASE_TIMEOUT_SECONDS:-15.0}"'
+        in api_section
+    )
     assert "unset EXPORT_DATABASE_URL" in api_section
     assert "unset EXPORT_DATABASE_URL" in grading_section
     assert "unset AUTH_INVITE_REDIRECT_URL" in grading_section
@@ -101,6 +105,7 @@ def test_sites_and_local_deployment_keep_public_and_secret_boundaries_separate()
     for component in ("tailscale", "watchdog"):
         assert f"write_single_program_plist {component}" in launch_installer
     assert "redis://127.0.0.1:6379/0" in production_template
+    assert "READINESS_DATABASE_TIMEOUT_SECONDS=15.0" in production_template
     assert "PROVIDER_CALLS_ENABLED=false" in production_template
     assert not (PROJECT_ROOT / "infra/render.yaml").exists()
 
