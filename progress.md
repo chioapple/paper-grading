@@ -501,5 +501,7 @@
   数据库计数；节点 6 只用免费 Keyword/邮件并在回滚前手工暂停。Sites 仅在现有 ChatGPT 方案
   公测限额内无新增费用，Supabase Free 可能因低活动暂停，文档不再承诺持续在线 SLA。
 - 同步修正 `docs/runbooks/smoke-test.md` 的旧真实 E2E 路径后，阶段 14 聚焦测试返回
-  `25 passed, 10 deselected`，本地预部署门禁返回 `stage14_predeployment_gate=true`。当前只剩
-  提交、推送和等待新候选 SHA 的 GitHub CI 精确 8/8。
+  `25 passed, 10 deselected`，本地预部署门禁返回 `stage14_predeployment_gate=true`。
+- 后续 Bug Review 又发现部署、监控和回滚手册仍从仓库工作区或旧环境文件执行；现已统一改为
+  封存的 `current` release 与 `shared/env`。由于回滚 SHA 早于模型调用硬门禁，回滚期间只启动
+  API 和导出 Worker，评分/维护 Worker 保持停止。完成最终门禁后重新生成候选并精确取得 CI 8/8。

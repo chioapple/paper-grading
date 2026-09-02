@@ -6,8 +6,8 @@
 - Supabase 继续承载数据库、Auth 和 Storage；Mac 只承载 API、Redis 和三个 Worker。
 - Sites 只托管前端，不保存数据库密码、Supabase Secret Key 或供应商密钥。
 - Redis 和 FastAPI 只监听 `127.0.0.1`；公网只能通过 Tailscale Funnel 访问 API。
-- `.env.stage14-production` 与 `.env.stage14-grading-worker` 必须保持在仓库忽略范围，
-  权限固定为 `0600`。
+- `$HOME/Library/Application Support/Paper Grading/shared/env/production.env` 与
+  `grading-worker.env` 是唯一生产环境来源，目录权限为 `0700`，文件权限为 `0600`。
 - 生产数据库只前向迁移，不执行 downgrade；Redis 不执行 `FLUSHALL` 或 `FLUSHDB`。
 - 自动清理、备份创建和备份清理保持关闭。
 - `launchd` 是进程事实源；Sites 保存版本是前端回滚事实源；Git SHA 是源代码事实源。
@@ -39,10 +39,12 @@ Direct 连接。
 安全回传：最终 revision 和命令退出码。
 
 ```bash
-cd "/Users/a1-6/Documents/Paper Grading/backend"
+runtime_root="$HOME/Library/Application Support/Paper Grading"
+current="$runtime_root/current"
+cd "$current/backend"
 test -n "${MIGRATION_DATABASE_URL:?missing MIGRATION_DATABASE_URL}"
-../.venv/bin/alembic upgrade 20260728_0019
-../.venv/bin/alembic current
+"$current/.venv/bin/alembic" upgrade 20260728_0019
+"$current/.venv/bin/alembic" current
 ```
 
 ### 2. 本机 Redis
@@ -68,9 +70,9 @@ lsof -nP -iTCP:6379 -sTCP:LISTEN
 交互设置。
 预期结果：
 
-- `.env.stage14-production` 包含 API、导出 Worker、Supabase、Redis、正式前端和
+- `shared/env/production.env` 包含 API、导出 Worker、Supabase、Redis、正式前端和
   Funnel 配置；UptimeRobot Keyword monitor 只在其网页端保存；
-- `.env.stage14-grading-worker` 只覆盖评分 Worker 的 `DATABASE_URL`；
+- `shared/env/grading-worker.env` 只覆盖评分 Worker 的 `DATABASE_URL`；
 - 两个文件权限均为 `0600`；
 - 评分 Worker 使用 `paper_grading_worker.<project-ref>`；
 - 导出 Worker 使用 `paper_grading_export_worker.<project-ref>`。
@@ -86,9 +88,9 @@ lsof -nP -iTCP:6379 -sTCP:LISTEN
 安全回传：固定通过标记和进程状态。
 
 ```bash
-cd "/Users/a1-6/Documents/Paper Grading"
-./infra/local/install-launch-agents.sh
-./infra/local/verify-runtime.sh
+runtime_root="$HOME/Library/Application Support/Paper Grading"
+"$runtime_root/current/infra/local/install-launch-agents.sh"
+"$runtime_root/current/infra/local/verify-runtime.sh"
 ```
 
 用户级 LaunchAgent 只承诺“登录后自动恢复”，不宣称在 macOS 登录界面之前已经运行。

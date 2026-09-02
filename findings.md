@@ -323,6 +323,9 @@
 - 单一 Keyword monitor 不负责逐个 Worker 的外部邮件告警。三个 Worker 由 `launchd KeepAlive`
   自动重启，本机 watchdog 每 60 秒记录 API、Redis 和 Worker 健康失败；阶段 14 的实际外部告警
   验收只验证公开 `/health/ready` 的 Down/Up 邮件，不把未覆盖的 Worker 告警写成已具备。
+- 运维手册不能从仓库当前工作区或旧 `.env.stage14-*` 文件执行，否则验证的可能不是已部署候选。
+  部署、监控、冒烟和回滚统一使用 `runtime_root/current` 与 `shared/env`；旧回滚 SHA 缺少模型调用
+  硬门禁，因此只能恢复 API 和导出 Worker，评分/维护 Worker 必须保持停止。
 - 节点 4—6 没有新增模型、数据库写入或付费监控动作。绝对总成本为 0 仍不能由本架构保证：Sites
   依赖现有 ChatGPT 方案并受公测限额约束，Mac、网络和用电也是既有成本；可严格保证的是本阶段
   不购买、不升级、不调用模型且新增费用为 0。

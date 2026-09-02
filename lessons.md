@@ -95,6 +95,8 @@
 - 外部服务的帮助页宣称某监控类型属于 Free，不能替代当前账户页面的实际可用性。若账户里没有
   Heartbeat 入口，或普通 HTTP monitor 的 GET/成功状态码带付费标记，就不能让验收依赖这些功能；
   应改用账户真实可创建的免费 Keyword monitor，并让本机 watchdog 不持有或发送外部监控 URL。
+- 发布验收手册必须从封存的 `current` release 和共享生产环境执行，不能引用仓库工作区或历史
+  `.env` 文件；回滚到缺少当前安全硬门禁的旧 SHA 时，只能启动不触发该风险的进程。
 - 阶段 14 改成零新增费用后，不能只改主验收文档；`deployment.md`、`monitoring-and-incidents.md`
   和 `smoke-test.md` 也必须一起去掉真实 E2E、Heartbeat URL 和其他付费监控假设，否则节点 4 之后会
   自相矛盾。

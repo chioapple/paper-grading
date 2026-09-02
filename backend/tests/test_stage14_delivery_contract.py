@@ -171,7 +171,15 @@ def test_browser_and_runbook_boundaries_are_explicit() -> None:
     assert "E2E_REAL_MODEL_CALLS" not in smoke
     assert "npm --prefix frontend run e2e:real" not in smoke
     assert "实际收到" in monitoring
+    assert "shared/env/production.env" in monitoring
+    assert "runtime_root/current" in monitoring
+    assert "../.venv/bin/celery" not in monitoring
     assert "恢复发布候选" in rollback
+    assert "shared/env/production.env" in rollback
+    assert "runtime_root/current" in rollback
+    assert "只启动 API 和导出 Worker" in rollback
+    assert ".env.stage14-production" not in deployment
+    assert "shared/env/production.env" in deployment
 
 
 def test_stage_fourteen_context_has_no_superseded_stage_five_blocker() -> None:

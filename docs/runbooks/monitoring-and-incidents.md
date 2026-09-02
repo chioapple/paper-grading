@@ -17,18 +17,23 @@
 安全回传：固定通过标记、Worker 名称和队列计数。
 
 ```bash
-cd "/Users/a1-6/Documents/Paper Grading"
-./infra/local/verify-runtime.sh
-cd backend
-../.venv/bin/celery \
+runtime_root="$HOME/Library/Application Support/Paper Grading"
+current="$runtime_root/current"
+set -a
+source "$runtime_root/shared/env/production.env"
+set +a
+export REDIS_URL
+"$current/infra/local/verify-runtime.sh"
+cd "$current/backend"
+"$current/.venv/bin/celery" \
   -A app.workers.celery_app:celery_app \
   inspect ping \
   --timeout 10
-../.venv/bin/celery \
+"$current/.venv/bin/celery" \
   -A app.workers.celery_app:celery_app \
   inspect active \
   --timeout 10
-../.venv/bin/celery \
+"$current/.venv/bin/celery" \
   -A app.workers.celery_app:celery_app \
   inspect reserved \
   --timeout 10

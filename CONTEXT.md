@@ -5,8 +5,10 @@
   LaunchAgent 均不存在。用户实际 UptimeRobot Free 页面虽与帮助页存在出入，但当前账户界面下可
   稳定执行的免费方案只有一个 5 分钟 Keyword monitor；因此本轮移除全部 Heartbeat URL、环境变量
   和外部 ping，只保留对 `/health/ready` 响应体中 `"status":"ready"` 的免费关键字检查，并把
-  `smoke-test.md` 从真实 E2E 改为纯只读页面检查。当前本地门禁 `stage14_predeployment_gate=true`，
-  阶段 14 聚焦后端测试 `25 passed, 10 deselected`。下一步是提交并推送新候选，待新 SHA 取得 CI
+  `smoke-test.md` 从真实 E2E 改为纯只读页面检查；部署、监控、冒烟和回滚手册统一从封存的
+  `current` release 与 `shared/env` 读取运行环境，旧回滚 SHA 期间只允许 API 和导出 Worker。
+  当前本地门禁 `stage14_predeployment_gate=true`，阶段 14 聚焦后端测试 `25 passed, 10 deselected`。
+  下一步是完成最终门禁、提交并推送新候选，待新 SHA 取得 CI
   8/8 后重做受 SHA 影响的 2.3—2.5。生产数据库未迁移，模型调用、业务写入、实际告警和回滚均未执行。
 - 最终验收信号：用户于 2026-07-26 明确确认 `docs/STAGE12_ACCEPTANCE.md` 全部步骤执行通过，阶段 12 已完成。
 - 阶段 12 最终迁移版本：`20260722_0017`；用户确认真实项目前向迁移和验收均已通过，真实项目不得为验收回退。
