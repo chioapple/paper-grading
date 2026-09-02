@@ -157,6 +157,9 @@ def test_browser_and_runbook_boundaries_are_explicit() -> None:
     assert "Codex Sites" in deployment
     assert "STAGE14_RELEASE_SHA" in deployment
     assert "${STAGE14_API_BASE_URL/https:/http:}" in smoke
+    assert "shared/env/production.env" in smoke
+    assert "runtime_root/current" in smoke
+    assert "source .env.stage14-production" not in smoke
     assert "allowed-cors.headers" in smoke
     assert "blocked-cors.headers" in smoke
     assert "x-content-type-options: nosniff" in smoke.lower()

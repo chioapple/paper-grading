@@ -120,6 +120,7 @@ git add -- \
   docs/STAGE14_ACCEPTANCE.md \
   docs/runbooks/deployment.md \
   docs/runbooks/monitoring-and-incidents.md \
+  docs/runbooks/smoke-test.md \
   findings.md \
   infra/local/production.env.example \
   infra/local/run-component.sh \

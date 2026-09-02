@@ -3,7 +3,7 @@
 ## 无写入检查
 
 执行终端：本机项目根目录。
-前置条件：设置正式 HTTPS API 和唯一前端来源；变量值不得粘贴到聊天。
+前置条件：节点 3 已创建 `shared/env/production.env`；变量值不得粘贴到聊天。
 预期结果：Funnel HTTPS 可用、明文 HTTP 不可用、live/ready 为 200、API 四个安全响应头
 存在、合法 Origin 被精确放行、恶意 Origin 没有 `Access-Control-Allow-Origin`。
 安全回传：域名、状态码和三项布尔结果，不回传完整响应头。
@@ -11,6 +11,10 @@
 ```bash
 set -euo pipefail
 cd "/Users/a1-6/Documents/Paper Grading"
+runtime_root="$HOME/Library/Application Support/Paper Grading"
+source "$runtime_root/shared/env/production.env"
+STAGE14_API_BASE_URL="$VITE_API_BASE_URL"
+STAGE14_FRONTEND_ORIGIN="$FRONTEND_ORIGIN"
 test -n "${STAGE14_API_BASE_URL:?missing STAGE14_API_BASE_URL}"
 test -n "${STAGE14_FRONTEND_ORIGIN:?missing STAGE14_FRONTEND_ORIGIN}"
 case "$STAGE14_API_BASE_URL" in https://*) ;; *) exit 1 ;; esac
@@ -28,13 +32,13 @@ curl --fail --silent --show-error --output /dev/null \
   "${STAGE14_API_BASE_URL%/}/health/live"
 curl --fail --silent --show-error "${STAGE14_API_BASE_URL%/}/health/ready" >/dev/null
 tr -d '\r' <"$STAGE14_SMOKE_DIR/api-security.headers" |
-  rg -Fxi 'x-content-type-options: nosniff'
+  /usr/bin/grep -Fxi 'x-content-type-options: nosniff'
 tr -d '\r' <"$STAGE14_SMOKE_DIR/api-security.headers" |
-  rg -Fxi 'x-frame-options: DENY'
+  /usr/bin/grep -Fxi 'x-frame-options: DENY'
 tr -d '\r' <"$STAGE14_SMOKE_DIR/api-security.headers" |
-  rg -Fxi 'referrer-policy: no-referrer'
+  /usr/bin/grep -Fxi 'referrer-policy: no-referrer'
 tr -d '\r' <"$STAGE14_SMOKE_DIR/api-security.headers" |
-  rg -Fxi 'permissions-policy: camera=(), microphone=(), geolocation=()'
+  /usr/bin/grep -Fxi 'permissions-policy: camera=(), microphone=(), geolocation=()'
 
 curl --fail --silent --show-error --output /dev/null \
   --dump-header "$STAGE14_SMOKE_DIR/allowed-cors.headers" \
@@ -42,7 +46,7 @@ curl --fail --silent --show-error --output /dev/null \
   -H 'Access-Control-Request-Method: GET' \
   -X OPTIONS "${STAGE14_API_BASE_URL%/}/auth/me"
 tr -d '\r' <"$STAGE14_SMOKE_DIR/allowed-cors.headers" |
-  rg -Fxi "access-control-allow-origin: $STAGE14_FRONTEND_ORIGIN"
+  /usr/bin/grep -Fxi "access-control-allow-origin: $STAGE14_FRONTEND_ORIGIN"
 
 blocked_status=$(curl --silent --show-error --output /dev/null \
   --write-out '%{http_code}' --dump-header "$STAGE14_SMOKE_DIR/blocked-cors.headers" \
@@ -51,7 +55,7 @@ blocked_status=$(curl --silent --show-error --output /dev/null \
   -X OPTIONS "${STAGE14_API_BASE_URL%/}/auth/me")
 test "$blocked_status" = "400"
 if tr -d '\r' <"$STAGE14_SMOKE_DIR/blocked-cors.headers" |
-  rg -qi '^access-control-allow-origin:'; then
+  /usr/bin/grep -qi '^access-control-allow-origin:'; then
   exit 1
 fi
 ```
@@ -83,14 +87,16 @@ fi
 
 ```bash
 cd "/Users/a1-6/Documents/Paper Grading"
+runtime_root="$HOME/Library/Application Support/Paper Grading"
+current="$runtime_root/current"
 set -a
-source .env.stage14-production
+source "$runtime_root/shared/env/production.env"
 set +a
-cd backend
-../.venv/bin/celery -A app.workers.celery_app:celery_app inspect ping --timeout 10
-../.venv/bin/celery -A app.workers.celery_app:celery_app inspect active --timeout 10
-../.venv/bin/celery -A app.workers.celery_app:celery_app inspect reserved --timeout 10
-../.venv/bin/python -c 'import os, redis; r=redis.Redis.from_url(os.environ["REDIS_URL"]); counts={q:r.llen(q) for q in ("paper_grading.grading","paper_grading.maintenance","paper_grading.exports")}; counts["unacked"]=r.hlen("unacked"); counts["unacked_index"]=r.zcard("unacked_index"); print(counts); assert all(value == 0 for value in counts.values())'
+cd "$current/backend"
+"$current/.venv/bin/celery" -A app.workers.celery_app:celery_app inspect ping --timeout 10
+"$current/.venv/bin/celery" -A app.workers.celery_app:celery_app inspect active --timeout 10
+"$current/.venv/bin/celery" -A app.workers.celery_app:celery_app inspect reserved --timeout 10
+"$current/.venv/bin/python" -c 'import os, redis; r=redis.Redis.from_url(os.environ["REDIS_URL"]); counts={q:r.llen(q) for q in ("paper_grading.grading","paper_grading.maintenance","paper_grading.exports")}; counts["unacked"]=r.hlen("unacked"); counts["unacked_index"]=r.zcard("unacked_index"); print(counts); assert all(value == 0 for value in counts.values())'
 ```
 
 ```sql
